@@ -1,3 +1,7 @@
+from filelock import FileLock
+
+LOCK_PATH = "/opt/trusttunnel/credentials.lock"
+
 import toml
 import shutil
 import os
