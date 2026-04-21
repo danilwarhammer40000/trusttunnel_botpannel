@@ -1,5 +1,7 @@
 import asyncio
 import os
+from datetime import datetime
+
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -19,7 +21,7 @@ from aiogram.fsm.context import FSMContext
 
 from core.service import safe_sync
 from core.generator import generate_link
-from core.db import add_user, delete_user, list_users, get_user
+from core.db import add_user, delete_user, list_users, get_user, update_user
 from core.credentials import remove_user_from_credentials
 
 
@@ -49,6 +51,11 @@ class AddUser(StatesGroup):
     username = State()
     password = State()
     days = State()
+
+
+class ExtendUser(StatesGroup):
+    mode = State()   # выбор типа продления
+    manual = State() # ручная дата
 
 
 # ---------------- KEYBOARD ----------------
@@ -93,6 +100,8 @@ async def menu_add(msg: Message, state: FSMContext):
     await msg.answer("Enter username:", reply_markup=cancel_kb)
 
 
+# ---------------- FIXED LIST ----------------
+
 @dp.message(F.text == "📋 List users")
 async def menu_list(msg: Message):
     users = list_users()
@@ -104,13 +113,91 @@ async def menu_list(msg: Message):
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(
             text=f"{u['username']} ({u.get('expires_at') or '∞'})",
-            callback_data=f"info:{u['username']}"
+            callback_data=f"extend:{u['username']}"
         )]
         for u in users
     ])
 
-    await msg.answer("Users:", reply_markup=kb)
+    await msg.answer("Select user to extend:", reply_markup=kb)
 
+
+# ---------------- EXTEND MENU ----------------
+
+@dp.callback_query(F.data.startswith("extend:"))
+async def extend_menu(call: CallbackQuery, state: FSMContext):
+    username = call.data.split(":")[1]
+
+    await state.update_data(username=username)
+    await state.set_state(ExtendUser.mode)
+
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="➕ 3 days", callback_data="ext:3")],
+        [InlineKeyboardButton(text="➕ 30 days", callback_data="ext:30")],
+        [InlineKeyboardButton(text="∞ unlimited", callback_data="ext:0")],
+        [InlineKeyboardButton(text="✍️ manual date", callback_data="ext:manual")]
+    ])
+
+    await call.message.answer(f"Extend user: {username}", reply_markup=kb)
+    await call.answer()
+
+
+# ---------------- EXTEND HANDLER ----------------
+
+@dp.callback_query(F.data.startswith("ext:"))
+async def extend_handler(call: CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    username = data.get("username")
+
+    mode = call.data.split(":")[1]
+
+    user = get_user(username)
+    if not user:
+        await call.message.answer("User not found")
+        return
+
+    # ---------------- UNLIMITED ----------------
+    if mode == "0":
+        update_user(username, expires_at=None, status="active")
+
+    # ---------------- DAYS ----------------
+    elif mode in ["3", "30"]:
+        days = int(mode)
+        update_user(username, expires_at=days, status="active")
+
+    # ---------------- MANUAL DATE ----------------
+    elif mode == "manual":
+        await state.set_state(ExtendUser.manual)
+        await call.message.answer("Send date: YYYY-MM-DD")
+        await call.answer()
+        return
+
+    safe_sync()
+
+    await state.clear()
+    await call.message.answer(f"Updated: {username}")
+    await call.answer()
+
+
+@dp.message(ExtendUser.manual)
+async def manual_date(msg: Message, state: FSMContext):
+    data = await state.get_data()
+    username = data["username"]
+
+    try:
+        datetime.strptime(msg.text.strip(), "%Y-%m-%d")
+    except:
+        await msg.answer("Wrong format. Use YYYY-MM-DD")
+        return
+
+    update_user(username, expires_at=msg.text.strip(), status="active")
+
+    safe_sync()
+
+    await state.clear()
+    await msg.answer(f"Updated to date: {username}")
+
+
+# ---------------- DELETE ----------------
 
 @dp.message(F.text == "❌ Delete user")
 async def menu_del(msg: Message):
@@ -131,6 +218,21 @@ async def menu_del(msg: Message):
     await msg.answer("Select user:", reply_markup=kb)
 
 
+@dp.callback_query(F.data.startswith("del:"))
+async def delete_callback(call: CallbackQuery):
+    username = call.data.split(":")[1]
+
+    delete_user(username)
+    remove_user_from_credentials(username)
+
+    safe_sync()
+
+    await call.message.answer(f"❌ Deleted: {username}")
+    await call.answer()
+
+
+# ---------------- LINK ----------------
+
 @dp.message(F.text == "🔗 Get link")
 async def menu_link(msg: Message):
     users = list_users()
@@ -150,7 +252,24 @@ async def menu_link(msg: Message):
     await msg.answer("Select user:", reply_markup=kb)
 
 
-# ---------------- ADD FLOW ----------------
+@dp.callback_query(F.data.startswith("link:"))
+async def link_callback(call: CallbackQuery):
+    username = call.data.split(":")[1]
+
+    user = get_user(username)
+    link = generate_link(username, DOMAIN)
+
+    await call.message.answer(
+        f"👤 Username: {username}\n"
+        f"🔑 Password: {user.get('password')}\n"
+        f"⏳ Expires: {user.get('expires_at') or '∞'}\n\n"
+        f"🔗 {link}"
+    )
+
+    await call.answer()
+
+
+# ---------------- ADD FLOW (UNCHANGED) ----------------
 
 @dp.message(AddUser.username)
 async def add_username(msg: Message, state: FSMContext):
@@ -213,61 +332,6 @@ async def add_days(msg: Message, state: FSMContext):
 
     await msg.answer("Menu:", reply_markup=main_menu)
     await state.clear()
-
-
-# ---------------- INFO ----------------
-
-@dp.callback_query(F.data.startswith("info:"))
-async def info_user(call: CallbackQuery):
-    username = call.data.split(":")[1]
-
-    user = get_user(username)
-
-    if not user:
-        await call.message.answer("User not found")
-    else:
-        await call.message.answer(
-            f"👤 {username}\n"
-            f"🔑 Password: {user.get('password')}\n"
-            f"⏳ Expires: {user.get('expires_at') or '∞'}\n"
-            f"📊 Status: {user.get('status')}"
-        )
-
-    await call.answer()
-
-
-# ---------------- DELETE ----------------
-
-@dp.callback_query(F.data.startswith("del:"))
-async def delete_callback(call: CallbackQuery):
-    username = call.data.split(":")[1]
-
-    delete_user(username)
-    remove_user_from_credentials(username)
-
-    safe_sync()
-
-    await call.message.answer(f"❌ Deleted: {username}")
-    await call.answer()
-
-
-# ---------------- LINK ----------------
-
-@dp.callback_query(F.data.startswith("link:"))
-async def link_callback(call: CallbackQuery):
-    username = call.data.split(":")[1]
-
-    user = get_user(username)
-    link = generate_link(username, DOMAIN)
-
-    await call.message.answer(
-        f"👤 Username: {username}\n"
-        f"🔑 Password: {user.get('password')}\n"
-        f"⏳ Expires: {user.get('expires_at') or '∞'}\n\n"
-        f"🔗 {link}"
-    )
-
-    await call.answer()
 
 
 # ---------------- MAIN ----------------
