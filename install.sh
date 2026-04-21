@@ -2,37 +2,44 @@
 
 set -e
 
-echo "=== TrustPanel Installer ==="
+echo "=== TrustPanel Installer (Git-based) ==="
 
 # -------------------------
 # SYSTEM UPDATE
 # -------------------------
-echo "[1/7] Updating system..."
+echo "[1/6] Updating system..."
 apt update && apt upgrade -y
 
-echo "[2/7] Installing dependencies..."
-apt install -y python3 python3-venv python3-pip git rsync
+echo "[2/6] Installing dependencies..."
+apt install -y python3 python3-venv python3-pip git
 
 
 # -------------------------
-# PROJECT PATH
+# PROJECT PATH (GIT INSTALL)
 # -------------------------
 DEFAULT_DIR="/opt/trustpanel"
-read -p "Install path [/opt/trustpanel]: " input_path
-PROJECT_DIR=${input_path:-$DEFAULT_DIR}
+read -p "Install path [/opt/trustpanel]: " PROJECT_DIR
+PROJECT_DIR=${PROJECT_DIR:-$DEFAULT_DIR}
 
-echo "[INFO] Installing to: $PROJECT_DIR"
+echo "[INFO] Installing repo to: $PROJECT_DIR"
 
-mkdir -p $PROJECT_DIR
-rsync -av --exclude='venv' --exclude='.git' ./ $PROJECT_DIR/
-
-cd $PROJECT_DIR
+# если уже есть — обновляем
+if [ -d "$PROJECT_DIR/.git" ]; then
+    echo "[INFO] Existing repo found, pulling updates..."
+    cd $PROJECT_DIR
+    git pull
+else
+    echo "[INFO] Cloning repository..."
+    rm -rf $PROJECT_DIR
+    git clone https://github.com/danilwarhammer40000/trusttunnel_botpannel.git $PROJECT_DIR
+    cd $PROJECT_DIR
+fi
 
 
 # -------------------------
 # PYTHON ENV
 # -------------------------
-echo "[3/7] Creating virtual environment..."
+echo "[3/6] Creating virtual environment..."
 
 python3 -m venv venv
 source venv/bin/activate
@@ -42,26 +49,26 @@ pip install -r requirements.txt
 
 
 # -------------------------
-# TRUSTTUNNEL PATH
+# MANUAL CONFIG (IMPORTANT FIX)
 # -------------------------
-echo "[4/7] TrustTunnel setup"
+echo "[4/6] Manual configuration"
 
-DEFAULT_TT="/opt/trusttunnel"
-read -p "TrustTunnel path [/opt/trusttunnel]: " TT_PATH
-TT_PATH=${TT_PATH:-$DEFAULT_TT}
+read -p "Enter TRUSTTUNNEL HOSTNAME (e.g. pelevindmy.ru): " HOSTNAME
+
+read -p "TrustTunnel binary path [/opt/trusttunnel]: " TT_PATH
+TT_PATH=${TT_PATH:-/opt/trusttunnel}
 
 BINARY="$TT_PATH/trusttunnel_endpoint"
 
 if [ ! -f "$BINARY" ]; then
-    echo "[WARN] trusttunnel_endpoint not found at $BINARY"
-    echo "[WARN] bot will run in fallback mode"
+    echo "[WARN] binary not found: $BINARY (fallback mode enabled)"
 fi
 
 
 # -------------------------
 # ENV FILE
 # -------------------------
-echo "[5/7] Creating .env"
+echo "[5/6] Creating .env"
 
 read -p "BOT_TOKEN: " BOT_TOKEN
 read -p "ADMIN_ID: " ADMIN_ID
@@ -69,6 +76,7 @@ read -p "ADMIN_ID: " ADMIN_ID
 cat > .env <<EOF
 BOT_TOKEN=$BOT_TOKEN
 ADMIN_ID=$ADMIN_ID
+TRUSTTUNNEL_DOMAIN=$HOSTNAME
 TRUSTTUNNEL_ENDPOINT_BIN=$BINARY
 EOF
 
@@ -76,7 +84,7 @@ EOF
 # -------------------------
 # SYSTEMD SERVICE
 # -------------------------
-echo "[6/7] Creating systemd service..."
+echo "[6/6] Creating systemd service..."
 
 cat > /etc/systemd/system/trustpanel.service <<EOF
 [Unit]
@@ -98,15 +106,11 @@ WantedBy=multi-user.target
 EOF
 
 
-# -------------------------
-# START
-# -------------------------
-echo "[7/7] Starting service..."
-
 systemctl daemon-reload
 systemctl enable trustpanel
 systemctl restart trustpanel
 
 echo "=== INSTALL COMPLETE ==="
-echo "Status:"
+echo "Use for updates:"
+echo "cd $PROJECT_DIR && git pull && systemctl restart trustpanel"
 systemctl status trustpanel --no-pager
