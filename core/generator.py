@@ -4,48 +4,59 @@ import os
 TRUSTTUNNEL_DIR = "/opt/trusttunnel"
 
 
+# -------------------------
+# RESOLVE BINARY
+# -------------------------
 def resolve_endpoint_binary():
     """
     Priority:
-    1. ENV (TRUSTTUNNEL_ENDPOINT_BIN)
+    1. ENV TRUSTTUNNEL_ENDPOINT_BIN
     2. /opt/trusttunnel/trusttunnel_endpoint
     3. None (fallback mode)
     """
 
-    # 1. ENV (highest priority)
     env_path = os.getenv("TRUSTTUNNEL_ENDPOINT_BIN")
     if env_path:
         env_path = os.path.abspath(env_path)
-        if os.path.exists(env_path):
+        if os.path.isfile(env_path):
             return env_path
 
-    # 2. Default server path
     server_path = os.path.join(TRUSTTUNNEL_DIR, "trusttunnel_endpoint")
-    if os.path.exists(server_path):
+    if os.path.isfile(server_path):
         return server_path
 
-    # 3. fallback
     return None
 
 
+# -------------------------
+# DOMAIN VALIDATION
+# -------------------------
+def validate_domain(domain: str):
+    if not domain:
+        raise ValueError("Domain is empty")
+
+    # простая защита от мусора
+    if " " in domain or domain.startswith("http"):
+        raise ValueError(f"Invalid domain: {domain}")
+
+
+# -------------------------
+# GENERATE LINK
+# -------------------------
 def generate_link(username: str, domain: str) -> str:
+    validate_domain(domain)
+
     binary_path = resolve_endpoint_binary()
 
     # -------------------------
-    # FALLBACK MODE (DEV / NO BINARY)
+    # FALLBACK MODE
     # -------------------------
-    if binary_path is None:
+    if not binary_path:
         return f"https://{domain}/connect/{username}"
 
-    # -------------------------
-    # SAFETY CHECK
-    # -------------------------
     if not os.path.isfile(binary_path):
         return f"https://{domain}/connect/{username}"
 
-    # -------------------------
-    # BUILD COMMAND
-    # -------------------------
     cmd = [
         binary_path,
         "vpn.toml",
@@ -63,22 +74,20 @@ def generate_link(username: str, domain: str) -> str:
             timeout=15
         )
 
-        # -------------------------
-        # ERROR HANDLING
-        # -------------------------
         if result.returncode != 0:
-            error_msg = result.stderr.strip()
-            raise RuntimeError(f"TrustTunnel generator failed: {error_msg}")
+            # НЕ скрываем ошибку полностью
+            raise RuntimeError(result.stderr.strip())
 
         output = result.stdout.strip()
 
         if not output:
-            raise RuntimeError("TrustTunnel returned empty output")
+            raise RuntimeError("Empty TrustTunnel output")
 
         return output
 
     except subprocess.TimeoutExpired:
-        raise RuntimeError("TrustTunnel generator timeout (15s)")
+        raise RuntimeError("TrustTunnel timeout (15s)")
+
     except Exception as e:
-        # fallback safety (НЕ падаем ботом)
+        # fallback только если всё сломалось полностью
         return f"https://{domain}/connect/{username}"
