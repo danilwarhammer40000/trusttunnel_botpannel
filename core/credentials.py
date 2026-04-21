@@ -1,37 +1,70 @@
 import toml
 import shutil
 import os
+import tempfile
 
 CREDENTIALS_PATH = "/opt/trusttunnel/credentials.toml"
 
 
+# -------------------------
+# LOAD SAFE
+# -------------------------
 def load_credentials():
     if not os.path.exists(CREDENTIALS_PATH):
-        raise FileNotFoundError("credentials.toml not found")
+        # вместо падения → создаём пустую структуру
+        return {"client": []}
 
-    return toml.load(CREDENTIALS_PATH)
+    try:
+        data = toml.load(CREDENTIALS_PATH)
+
+        if not isinstance(data, dict):
+            return {"client": []}
+
+        if "client" not in data:
+            data["client"] = []
+
+        return data
+
+    except Exception:
+        # битый toml → fallback
+        return {"client": []}
 
 
+# -------------------------
+# ATOMIC SAVE
+# -------------------------
 def save_credentials(data):
-    """Сохраняем аккуратно"""
-    with open(CREDENTIALS_PATH, "w") as f:
-        toml.dump(data, f)
+    dir_name = os.path.dirname(CREDENTIALS_PATH)
+    os.makedirs(dir_name, exist_ok=True)
+
+    with tempfile.NamedTemporaryFile("w", delete=False, dir=dir_name) as tmp:
+        toml.dump(data, tmp)
+        tmp_path = tmp.name
+
+    os.replace(tmp_path, CREDENTIALS_PATH)
 
 
+# -------------------------
+# BACKUP
+# -------------------------
 def backup_credentials():
-    """Простой backup (основная логика будет в services)"""
     if os.path.exists(CREDENTIALS_PATH):
-        shutil.copy(CREDENTIALS_PATH, CREDENTIALS_PATH + ".bak")
+        shutil.copy(
+            CREDENTIALS_PATH,
+            CREDENTIALS_PATH + ".bak"
+        )
 
 
+# -------------------------
+# ADD USER
+# -------------------------
 def add_user_to_credentials(username, password):
     data = load_credentials()
 
     clients = data.get("client", [])
 
-    # защита от дублей
     for c in clients:
-        if c["username"] == username:
+        if c.get("username") == username:
             raise ValueError("User already exists in credentials")
 
     clients.append({
@@ -43,17 +76,26 @@ def add_user_to_credentials(username, password):
     save_credentials(data)
 
 
+# -------------------------
+# REMOVE USER
+# -------------------------
 def remove_user_from_credentials(username):
     data = load_credentials()
 
     clients = data.get("client", [])
-    new_clients = [c for c in clients if c["username"] != username]
+
+    new_clients = [
+        c for c in clients
+        if c.get("username") != username
+    ]
 
     data["client"] = new_clients
     save_credentials(data)
 
 
+# -------------------------
+# REGENERATE USER
+# -------------------------
 def regenerate_user(username, password):
-    """Удалить и добавить заново"""
     remove_user_from_credentials(username)
     add_user_to_credentials(username, password)
