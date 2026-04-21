@@ -79,3 +79,18 @@ def force_reload_user(username):
         add_user_to_credentials(username, user["password"])
 
     restart_trusttunnel()
+
+def expire_and_sync():
+    """
+    Основной worker:
+    DB → credentials sync + cleanup + restart
+    """
+    sync_db_to_credentials()
+    restart_trusttunnel()
+
+
+def backup_job():
+    """
+    Backup credentials only
+    """
+    backup_credentials()
