@@ -1,5 +1,13 @@
+print("FILE LOADED")
 import asyncio
 import os
+
+from dotenv import load_dotenv
+
+load_dotenv()
+
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import CallbackQuery
 from aiogram import Bot, Dispatcher, F
 from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton
 from aiogram.fsm.state import State, StatesGroup
@@ -129,23 +137,51 @@ async def list_users_handler(msg: Message):
 
 
 # ---------------- DEL ----------------
-
 @dp.message(F.text == "DEL")
 async def del_user(msg: Message):
     users = list_users()
 
-    text = "Select user:\n\n"
-    for i, u in enumerate(users):
-        text += f"{i+1}. {u['username']}\n"
+    if not users:
+        await msg.answer("No users")
+        return
 
-    await msg.answer(text)
+    kb = []
+
+    for u in users:
+        kb.append([
+            InlineKeyboardButton(
+                text=f"{u['username']} ({u['status']})",
+                callback_data=f"del:{u['username']}"
+            )
+        ])
+
+    await msg.answer(
+        "Select user to delete:",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=kb)
+    )
+    
+    from core.credentials import remove_user_from_credentials
+from core.service import safe_sync
 
 
-# ---------------- MAIN ----------------
+@dp.callback_query(F.data.startswith("del:"))
+async def delete_callback(call: CallbackQuery):
+    username = call.data.split(":")[1]
 
+    delete_user(username)
+    remove_user_from_credentials(username)
+
+    safe_sync()
+
+    await call.message.answer(f"Deleted: {username}")
+    await call.answer()
+    
 async def main():
+    print("STARTING BOT...")
     await dp.start_polling(bot)
 
 
 if __name__ == "__main__":
     asyncio.run(main())
+
+print("BOTTOM OF FILE REACHED")
