@@ -6,6 +6,16 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+ADMIN_ID = os.getenv("ADMIN_ID")
+
+if not BOT_TOKEN:
+    raise RuntimeError("BOT_TOKEN missing in .env")
+
+if not ADMIN_ID:
+    raise RuntimeError("ADMIN_ID missing in .env")
+
+
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.types import CallbackQuery
 from aiogram import Bot, Dispatcher, F
@@ -17,7 +27,7 @@ from core.service import safe_sync
 from core.generator import generate_link
 from core.db import add_user, delete_user, list_users, update_user
 
-BOT_TOKEN = os.getenv("BOT_TOKEN")
+
 
 
 # ---------------- FSM ----------------
