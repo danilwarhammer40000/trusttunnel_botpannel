@@ -11,7 +11,8 @@ from aiogram.types import (
     InlineKeyboardMarkup,
     InlineKeyboardButton,
     ReplyKeyboardMarkup,
-    KeyboardButton
+    KeyboardButton,
+    ReplyKeyboardRemove
 )
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.context import FSMContext
@@ -50,15 +51,17 @@ class AddUser(StatesGroup):
     days = State()
 
 
-# ---------------- UI ----------------
+# ---------------- KEYBOARD ----------------
 
-main_menu = InlineKeyboardMarkup(inline_keyboard=[
-    [InlineKeyboardButton(text="➕ Add user", callback_data="menu:add")],
-    [InlineKeyboardButton(text="📋 List users", callback_data="menu:list")],
-    [InlineKeyboardButton(text="❌ Delete user", callback_data="menu:del")],
-    [InlineKeyboardButton(text="🔗 Get link", callback_data="menu:link")]
-])
-
+main_menu = ReplyKeyboardMarkup(
+    keyboard=[
+        [KeyboardButton(text="➕ Add user")],
+        [KeyboardButton(text="📋 List users")],
+        [KeyboardButton(text="❌ Delete user")],
+        [KeyboardButton(text="🔗 Get link")]
+    ],
+    resize_keyboard=True
+)
 
 cancel_kb = ReplyKeyboardMarkup(
     keyboard=[[KeyboardButton(text="❌ Cancel")]],
@@ -75,75 +78,76 @@ async def start(msg: Message):
 
 # ---------------- CANCEL ----------------
 
-@dp.message(F.text.lower().in_(["cancel", "❌ cancel"]))
+@dp.message(F.text.lower() == "❌ cancel")
 async def cancel(msg: Message, state: FSMContext):
     await state.clear()
-    await msg.answer("❌ Cancelled", reply_markup=main_menu)
+    await msg.answer("❌ Cancelled", reply_markup=ReplyKeyboardRemove())
+    await msg.answer("Menu:", reply_markup=main_menu)
 
 
-# ---------------- MENU ----------------
+# ---------------- MENU HANDLERS ----------------
 
-@dp.callback_query(F.data.startswith("menu:"))
-async def menu_router(call: CallbackQuery, state: FSMContext):
-    action = call.data.split(":")[1]
+@dp.message(F.text == "➕ Add user")
+async def menu_add(msg: Message, state: FSMContext):
+    await state.set_state(AddUser.username)
+    await msg.answer("Enter username:", reply_markup=cancel_kb)
 
-    # ADD
-    if action == "add":
-        await state.set_state(AddUser.username)
-        await call.message.answer("Enter username:", reply_markup=cancel_kb)
 
-    # LIST
-    elif action == "list":
-        users = list_users()
+@dp.message(F.text == "📋 List users")
+async def menu_list(msg: Message):
+    users = list_users()
 
-        if not users:
-            await call.message.answer("No users")
-        else:
-            kb = InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(
-                    text=f"{u['username']} ({u.get('expires_at') or '∞'})",
-                    callback_data=f"info:{u['username']}"
-                )]
-                for u in users
-            ])
+    if not users:
+        await msg.answer("No users")
+        return
 
-            await call.message.answer("Users:", reply_markup=kb)
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(
+            text=f"{u['username']} ({u.get('expires_at') or '∞'})",
+            callback_data=f"info:{u['username']}"
+        )]
+        for u in users
+    ])
 
-    # DELETE
-    elif action == "del":
-        users = list_users()
+    await msg.answer("Users:", reply_markup=kb)
 
-        if not users:
-            await call.message.answer("No users")
-        else:
-            kb = InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(
-                    text=u["username"],
-                    callback_data=f"del:{u['username']}"
-                )]
-                for u in users
-            ])
 
-            await call.message.answer("Select user:", reply_markup=kb)
+@dp.message(F.text == "❌ Delete user")
+async def menu_del(msg: Message):
+    users = list_users()
 
-    # LINK
-    elif action == "link":
-        users = list_users()
+    if not users:
+        await msg.answer("No users")
+        return
 
-        if not users:
-            await call.message.answer("No users")
-        else:
-            kb = InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(
-                    text=u["username"],
-                    callback_data=f"link:{u['username']}"
-                )]
-                for u in users
-            ])
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(
+            text=u["username"],
+            callback_data=f"del:{u['username']}"
+        )]
+        for u in users
+    ])
 
-            await call.message.answer("Select user:", reply_markup=kb)
+    await msg.answer("Select user:", reply_markup=kb)
 
-    await call.answer()
+
+@dp.message(F.text == "🔗 Get link")
+async def menu_link(msg: Message):
+    users = list_users()
+
+    if not users:
+        await msg.answer("No users")
+        return
+
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(
+            text=u["username"],
+            callback_data=f"link:{u['username']}"
+        )]
+        for u in users
+    ])
+
+    await msg.answer("Select user:", reply_markup=kb)
 
 
 # ---------------- ADD FLOW ----------------
@@ -152,7 +156,7 @@ async def menu_router(call: CallbackQuery, state: FSMContext):
 async def add_username(msg: Message, state: FSMContext):
     await state.update_data(username=msg.text)
     await state.set_state(AddUser.password)
-    await msg.answer("Enter password:", reply_markup=cancel_kb)
+    await msg.answer("Enter password:")
 
 
 @dp.message(AddUser.password)
@@ -199,7 +203,15 @@ async def add_days(msg: Message, state: FSMContext):
 
     link = generate_link(username, DOMAIN)
 
-    await msg.answer(f"✅ Created:\n\n{link}", reply_markup=main_menu)
+    await msg.answer(
+        f"👤 Username: {username}\n"
+        f"🔑 Password: {password}\n"
+        f"⏳ Expires: {expires_at or '∞'}\n\n"
+        f"🔗 {link}",
+        reply_markup=ReplyKeyboardRemove()
+    )
+
+    await msg.answer("Menu:", reply_markup=main_menu)
     await state.clear()
 
 
@@ -216,8 +228,9 @@ async def info_user(call: CallbackQuery):
     else:
         await call.message.answer(
             f"👤 {username}\n"
-            f"Expires: {user.get('expires_at') or '∞'}\n"
-            f"Status: {user.get('status')}"
+            f"🔑 Password: {user.get('password')}\n"
+            f"⏳ Expires: {user.get('expires_at') or '∞'}\n"
+            f"📊 Status: {user.get('status')}"
         )
 
     await call.answer()
@@ -244,9 +257,16 @@ async def delete_callback(call: CallbackQuery):
 async def link_callback(call: CallbackQuery):
     username = call.data.split(":")[1]
 
+    user = get_user(username)
     link = generate_link(username, DOMAIN)
 
-    await call.message.answer(f"🔗 {link}")
+    await call.message.answer(
+        f"👤 Username: {username}\n"
+        f"🔑 Password: {user.get('password')}\n"
+        f"⏳ Expires: {user.get('expires_at') or '∞'}\n\n"
+        f"🔗 {link}"
+    )
+
     await call.answer()
 
 
