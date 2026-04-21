@@ -11,7 +11,8 @@ echo "[1/7] Updating system..."
 apt update && apt upgrade -y
 
 echo "[2/7] Installing dependencies..."
-apt install -y python3 python3-venv python3-pip git
+apt install -y python3 python3-venv python3-pip git rsync
+
 
 # -------------------------
 # PROJECT PATH
@@ -22,15 +23,11 @@ PROJECT_DIR=${input_path:-$DEFAULT_DIR}
 
 echo "[INFO] Installing to: $PROJECT_DIR"
 
-# -------------------------
-# SAFE INSTALL DIR
-# -------------------------
 mkdir -p $PROJECT_DIR
-
-# очищаем ТОЛЬКО код, не трогая system
 rsync -av --exclude='venv' --exclude='.git' ./ $PROJECT_DIR/
 
 cd $PROJECT_DIR
+
 
 # -------------------------
 # PYTHON ENV
@@ -43,14 +40,23 @@ source venv/bin/activate
 python -m pip install --upgrade pip
 pip install -r requirements.txt
 
+
 # -------------------------
 # TRUSTTUNNEL PATH
 # -------------------------
-echo "[4/7] TrustTunnel path setup"
+echo "[4/7] TrustTunnel setup"
 
 DEFAULT_TT="/opt/trusttunnel"
 read -p "TrustTunnel path [/opt/trusttunnel]: " TT_PATH
 TT_PATH=${TT_PATH:-$DEFAULT_TT}
+
+BINARY="$TT_PATH/trusttunnel_endpoint"
+
+if [ ! -f "$BINARY" ]; then
+    echo "[WARN] trusttunnel_endpoint not found at $BINARY"
+    echo "[WARN] bot will run in fallback mode"
+fi
+
 
 # -------------------------
 # ENV FILE
@@ -63,8 +69,9 @@ read -p "ADMIN_ID: " ADMIN_ID
 cat > .env <<EOF
 BOT_TOKEN=$BOT_TOKEN
 ADMIN_ID=$ADMIN_ID
-TRUSTTUNNEL_ENDPOINT_BIN=$TT_PATH/trusttunnel_endpoint
+TRUSTTUNNEL_ENDPOINT_BIN=$BINARY
 EOF
+
 
 # -------------------------
 # SYSTEMD SERVICE
@@ -78,12 +85,11 @@ After=network.target
 
 [Service]
 WorkingDirectory=$PROJECT_DIR
+EnvironmentFile=$PROJECT_DIR/.env
 ExecStart=$PROJECT_DIR/venv/bin/python -m bot.bot
 Restart=always
 RestartSec=3
 User=root
-
-# logs в journalctl
 StandardOutput=journal
 StandardError=journal
 
@@ -91,8 +97,9 @@ StandardError=journal
 WantedBy=multi-user.target
 EOF
 
+
 # -------------------------
-# START SERVICE
+# START
 # -------------------------
 echo "[7/7] Starting service..."
 
@@ -101,5 +108,5 @@ systemctl enable trustpanel
 systemctl restart trustpanel
 
 echo "=== INSTALL COMPLETE ==="
-echo "Check status:"
+echo "Status:"
 systemctl status trustpanel --no-pager
