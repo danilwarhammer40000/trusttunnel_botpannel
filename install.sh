@@ -11,7 +11,7 @@ echo "[1/7] Updating system..."
 apt update && apt upgrade -y
 
 echo "[2/7] Installing dependencies..."
-apt install -y python3.11 python3.11-venv python3-pip git
+apt install -y python3 python3-venv python3-pip git
 
 # -------------------------
 # PROJECT PATH
@@ -37,7 +37,7 @@ cd $PROJECT_DIR
 # -------------------------
 echo "[3/7] Creating virtual environment..."
 
-python3.11 -m venv venv
+python3 -m venv venv
 source venv/bin/activate
 
 python -m pip install --upgrade pip
