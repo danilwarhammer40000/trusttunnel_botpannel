@@ -53,7 +53,7 @@ pip install -r requirements.txt
 # -------------------------
 echo "[4/6] Manual configuration"
 
-read -p "Enter TRUSTTUNNEL HOSTNAME (e.g. pelevindmy.ru): " HOSTNAME
+read -p "Enter TRUSTTUNNEL HOSTNAME (e.g. example.ru): " HOSTNAME
 
 read -p "TrustTunnel binary path [/opt/trusttunnel]: " TT_PATH
 TT_PATH=${TT_PATH:-/opt/trusttunnel}
