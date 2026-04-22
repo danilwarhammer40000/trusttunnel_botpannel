@@ -3,4 +3,4 @@ Description=TrustPanel Backup
 
 [Service]
 Type=oneshot
-ExecStart=/usr/bin/python3 /opt/trustpanel/services/backup.py
+ExecStart=/opt/trustpanel/venv/bin/python /opt/trustpanel/services/backup.py
