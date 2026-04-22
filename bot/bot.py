@@ -156,28 +156,30 @@ async def extend_handler(call: CallbackQuery, state: FSMContext):
         await call.message.answer("User not found")
         return
 
-    # ---------------- UNLIMITED ----------------
-    if mode == "0":
-        update_user(username, expires_at=None, status="active")
+   # ---------------- UNLIMITED ----------------
+if mode == "0":
+    update_user(username, expires_at=None, status="active")
 
-    # ---------------- DAYS ----------------
-   elif mode in ["3", "30"]:
+# ---------------- DAYS ----------------
+elif mode in ["3", "30"]:
     days = int(mode)
 
-    expires_at = (datetime.utcnow() + timedelta(days=days)).strftime("%Y-%m-%d")
+    expires_at = (
+        datetime.utcnow() + timedelta(days=days)
+    ).strftime("%Y-%m-%d")
 
     update_user(username, expires_at=expires_at, status="active")
 
-    # ---------------- MANUAL DATE ----------------
-    elif mode == "manual":
-        await state.set_state(ExtendUser.manual)
-        await call.message.answer("Send date: YYYY-MM-DD")
-        await call.answer()
-        return
+# ---------------- MANUAL DATE ----------------
+elif mode == "manual":
+    await state.set_state(ExtendUser.manual)
+    await call.message.answer("Send date: YYYY-MM-DD")
+    await call.answer()
+    return
 
-    safe_sync()
+safe_sync()
 
-    await state.clear()
+await state.clear()
     await call.message.answer(f"Updated: {username}")
     await call.answer()
 
