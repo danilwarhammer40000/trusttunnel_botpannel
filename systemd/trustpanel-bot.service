@@ -5,7 +5,8 @@ After=network.target
 [Service]
 User=root
 WorkingDirectory=/opt/trustpanel
-ExecStart=/usr/bin/python3 /opt/trustpanel/bot/bot.py
+EnvironmentFile=/opt/trustpanel/.env
+ExecStart=/opt/trustpanel/venv/bin/python /opt/trustpanel/bot/bot.py
 Restart=always
 
 [Install]
