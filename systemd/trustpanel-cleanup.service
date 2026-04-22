@@ -3,4 +3,4 @@ Description=TrustPanel Cleanup
 
 [Service]
 Type=oneshot
-ExecStart=/usr/bin/python3 /opt/trustpanel/services/cleanup.py
+ExecStart=/opt/trustpanel/venv/bin/python /opt/trustpanel/services/cleanup.py
