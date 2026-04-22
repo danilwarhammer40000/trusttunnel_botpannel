@@ -121,3 +121,5 @@ def regenerate_user(username, password):
     })
 
     save_credentials(data)
+
+from core.db import list_users
