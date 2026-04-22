@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
-echo "=== TrustPanel Installer (Production Hardened) ==="
+echo "=== TrustPanel Installer (Fixed) ==="
 
 # -------------------------
 # CONFIG
@@ -38,7 +38,7 @@ else
 fi
 
 # -------------------------
-# VENV (HARD FIXED)
+# VENV
 # -------------------------
 echo "[3/8] Setting up virtual environment..."
 
@@ -52,7 +52,7 @@ python -m pip install --upgrade pip setuptools wheel
 pip install -r requirements.txt
 
 # -------------------------
-# INPUT VALIDATION
+# INPUT
 # -------------------------
 echo "[4/8] Configuration"
 
@@ -65,15 +65,14 @@ if [[ -z "$BOT_TOKEN" || -z "$ADMIN_ID" || -z "$DOMAIN" ]]; then
     exit 1
 fi
 
-# sanitize (CRLF / hidden chars fix)
 BOT_TOKEN=$(echo "$BOT_TOKEN" | tr -d '\r')
 ADMIN_ID=$(echo "$ADMIN_ID" | tr -d '\r')
 DOMAIN=$(echo "$DOMAIN" | tr -d '\r')
 
 # -------------------------
-# .ENV (HARDENED WRITER)
+# ENV
 # -------------------------
-echo "[5/8] Writing .env safely..."
+echo "[5/8] Writing .env..."
 
 cat > "$PROJECT_DIR/.env" <<EOF
 BOT_TOKEN=$BOT_TOKEN
@@ -85,13 +84,11 @@ EOF
 chmod 600 "$PROJECT_DIR/.env"
 
 # -------------------------
-# SYSTEMD (CLEAN REINSTALL)
+# SYSTEMD BOT
 # -------------------------
-echo "[6/8] Installing systemd service..."
+echo "[6/8] Installing systemd services..."
 
-SERVICE_FILE="/etc/systemd/system/trustpanel-bot.service"
-
-cat > "$SERVICE_FILE" <<EOF
+cat > /etc/systemd/system/trustpanel-bot.service <<EOF
 [Unit]
 Description=TrustPanel Bot
 After=network-online.target
@@ -101,17 +98,13 @@ Wants=network-online.target
 Type=simple
 WorkingDirectory=$PROJECT_DIR
 EnvironmentFile=$PROJECT_DIR/.env
-
 ExecStart=$PROJECT_DIR/venv/bin/python -m bot.bot
 
 Restart=always
 RestartSec=5
-RestartPreventExitStatus=255
-
 User=root
 Group=root
 
-# HARDENING
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=full
@@ -125,14 +118,47 @@ WantedBy=multi-user.target
 EOF
 
 # -------------------------
+# OPTIONAL SERVICES
+# -------------------------
+echo "[6.1] Installing optional services if present..."
+
+install_optional_service () {
+    local name=$1
+    local src="$PROJECT_DIR/services/$name"
+
+    if [ -f "$src" ]; then
+        echo "[INFO] Installing $name"
+        cp "$src" "/etc/systemd/system/$name"
+        systemctl enable "$name"
+    else
+        echo "[SKIP] $name not found in repo"
+    fi
+}
+
+install_optional_service "trustpanel-cleanup.service"
+install_optional_service "trustpanel-backup.service"
+
+# -------------------------
 # SYSTEMD APPLY
 # -------------------------
 echo "[7/8] Reloading systemd..."
 
 systemctl daemon-reload
+
 systemctl stop trustpanel-bot.service 2>/dev/null || true
 systemctl enable trustpanel-bot.service
 systemctl restart trustpanel-bot.service
+
+# restart optional safely
+safe_restart () {
+    local svc=$1
+    if systemctl list-unit-files | grep -q "$svc"; then
+        systemctl restart "$svc"
+    fi
+}
+
+safe_restart "trustpanel-cleanup.service"
+safe_restart "trustpanel-backup.service"
 
 # -------------------------
 # HEALTH CHECK
@@ -145,10 +171,8 @@ if systemctl is-active --quiet trustpanel-bot.service; then
     echo "✅ TRUSTPANEL BOT IS RUNNING"
 else
     echo "❌ SERVICE FAILED"
-    echo ""
     systemctl status trustpanel-bot.service --no-pager || true
     echo ""
-    echo "LAST LOGS:"
     journalctl -u trustpanel-bot.service -n 50 --no-pager || true
 fi
 
