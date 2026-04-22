@@ -8,6 +8,8 @@ from filelock import FileLock
 CREDENTIALS_PATH = "/opt/trusttunnel/credentials.toml"
 LOCK_PATH = "/opt/trusttunnel/credentials.lock"
 
+lock = FileLock(LOCK_PATH, timeout=10)
+
 
 # -------------------------
 # LOAD SAFE (READ ONLY)
@@ -33,13 +35,17 @@ def load_credentials():
 
 
 # -------------------------
-# ATOMIC SAVE (LOCKED)
+# ATOMIC SAVE (ONLY PLACE WITH LOCK)
 # -------------------------
 def save_credentials(data):
     os.makedirs(os.path.dirname(CREDENTIALS_PATH), exist_ok=True)
 
-    with FileLock(LOCK_PATH):
-        with tempfile.NamedTemporaryFile("w", delete=False, dir=os.path.dirname(CREDENTIALS_PATH)) as tmp:
+    with lock:
+        with tempfile.NamedTemporaryFile(
+            "w",
+            delete=False,
+            dir=os.path.dirname(CREDENTIALS_PATH)
+        ) as tmp:
             toml.dump(data, tmp)
             tmp_path = tmp.name
 
@@ -47,76 +53,71 @@ def save_credentials(data):
 
 
 # -------------------------
-# BACKUP (HISTORY SAFE)
+# BACKUP (NO LOCK)
 # -------------------------
 def backup_credentials():
-    if os.path.exists(CREDENTIALS_PATH):
-        os.makedirs(os.path.dirname(CREDENTIALS_PATH), exist_ok=True)
+    if not os.path.exists(CREDENTIALS_PATH):
+        return
 
-        ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+    os.makedirs(os.path.dirname(CREDENTIALS_PATH), exist_ok=True)
 
-        shutil.copy(
-            CREDENTIALS_PATH,
-            f"{CREDENTIALS_PATH}.{ts}.bak"
-        )
+    ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+
+    shutil.copy(
+        CREDENTIALS_PATH,
+        f"{CREDENTIALS_PATH}.{ts}.bak"
+    )
 
 
 # -------------------------
 # ADD USER
 # -------------------------
 def add_user_to_credentials(username, password):
-    with FileLock(LOCK_PATH):
-        data = load_credentials()
+    data = load_credentials()
 
-        clients = data.get("client", [])
+    clients = data.get("client", [])
 
-        for c in clients:
-            if c.get("username") == username:
-                raise ValueError("User already exists in credentials")
+    for c in clients:
+        if c.get("username") == username:
+            raise ValueError("User already exists in credentials")
 
-        clients.append({
-            "username": username,
-            "password": password
-        })
+    clients.append({
+        "username": username,
+        "password": password
+    })
 
-        data["client"] = clients
-        save_credentials(data)
+    data["client"] = clients
+    save_credentials(data)
 
 
 # -------------------------
 # REMOVE USER
 # -------------------------
 def remove_user_from_credentials(username):
-    with FileLock(LOCK_PATH):
-        data = load_credentials()
+    data = load_credentials()
 
-        clients = data.get("client", [])
+    data["client"] = [
+        c for c in data.get("client", [])
+        if c.get("username") != username
+    ]
 
-        data["client"] = [
-            c for c in clients
-            if c.get("username") != username
-        ]
-
-        save_credentials(data)
+    save_credentials(data)
 
 
 # -------------------------
 # REGENERATE USER
 # -------------------------
 def regenerate_user(username, password):
-    with FileLock(LOCK_PATH):
-        data = load_credentials()
+    data = load_credentials()
 
-        # remove old
-        data["client"] = [
-            c for c in data.get("client", [])
-            if c.get("username") != username
-        ]
+    data["client"] = [
+        c for c in data.get("client", [])
+        if c.get("username") != username
+    ]
 
-        # add new
-        data["client"].append({
-            "username": username,
-            "password": password
-        })
+    data["client"].append({
+        "username": username,
+        "password": password
+    })
 
-        save_credentials(data)
+    save_credentials(data)
