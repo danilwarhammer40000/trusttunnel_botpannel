@@ -1,5 +1,4 @@
 import toml
-import shutil
 import os
 import tempfile
 from datetime import datetime
@@ -11,41 +10,24 @@ LOCK_PATH = "/opt/trusttunnel/credentials.lock"
 lock = FileLock(LOCK_PATH, timeout=10)
 
 
-# -------------------------
-# LOAD SAFE (READ ONLY)
-# -------------------------
 def load_credentials():
     if not os.path.exists(CREDENTIALS_PATH):
         return {"client": []}
 
     try:
         data = toml.load(CREDENTIALS_PATH)
-
-        if not isinstance(data, dict):
-            return {"client": []}
-
-        if "client" not in data or not isinstance(data["client"], list):
+        if "client" not in data:
             data["client"] = []
-
         return data
-
-    except Exception as e:
-        print(f"[ERROR] credentials.toml corrupted: {e}")
+    except Exception:
         return {"client": []}
 
 
-# -------------------------
-# ATOMIC SAVE (ONLY PLACE WITH LOCK)
-# -------------------------
-def save_credentials(data):
+def atomic_write(data):
     os.makedirs(os.path.dirname(CREDENTIALS_PATH), exist_ok=True)
 
     with lock:
-        with tempfile.NamedTemporaryFile(
-            "w",
-            delete=False,
-            dir=os.path.dirname(CREDENTIALS_PATH)
-        ) as tmp:
+        with tempfile.NamedTemporaryFile("w", delete=False, dir=os.path.dirname(CREDENTIALS_PATH)) as tmp:
             toml.dump(data, tmp)
             tmp_path = tmp.name
 
@@ -53,46 +35,29 @@ def save_credentials(data):
 
 
 # -------------------------
-# BACKUP (NO LOCK)
+# 🔥 FULL REBUILD (MAIN FIX)
 # -------------------------
-def backup_credentials():
-    if not os.path.exists(CREDENTIALS_PATH):
-        return
+def rebuild_credentials_from_db(users):
+    """
+    ВАЖНО:
+    TOML = полностью пересобирается из JSON
+    никаких incremental updates
+    """
 
-    os.makedirs(os.path.dirname(CREDENTIALS_PATH), exist_ok=True)
+    clients = []
 
-    ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+    for u in users:
+        if u.get("status") != "active":
+            continue
 
-    shutil.copy(
-        CREDENTIALS_PATH,
-        f"{CREDENTIALS_PATH}.{ts}.bak"
-    )
+        clients.append({
+            "username": u["username"],
+            "password": u.get("password", "")
+        })
 
-
-# -------------------------
-# ADD USER
-# -------------------------
-def add_user_to_credentials(username, password):
-    data = load_credentials()
-
-    clients = data.get("client", [])
-
-    for c in clients:
-        if c.get("username") == username:
-            raise ValueError("User already exists in credentials")
-
-    clients.append({
-        "username": username,
-        "password": password
-    })
-
-    data["client"] = clients
-    save_credentials(data)
+    atomic_write({"client": clients})
 
 
-# -------------------------
-# REMOVE USER
-# -------------------------
 def remove_user_from_credentials(username):
     data = load_credentials()
 
@@ -101,25 +66,4 @@ def remove_user_from_credentials(username):
         if c.get("username") != username
     ]
 
-    save_credentials(data)
-
-
-# -------------------------
-# REGENERATE USER
-# -------------------------
-def regenerate_user(username, password):
-    data = load_credentials()
-
-    data["client"] = [
-        c for c in data.get("client", [])
-        if c.get("username") != username
-    ]
-
-    data["client"].append({
-        "username": username,
-        "password": password
-    })
-
-    save_credentials(data)
-
-from core.db import list_users
+    atomic_write(data)
