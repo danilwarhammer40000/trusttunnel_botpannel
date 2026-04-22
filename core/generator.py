@@ -3,7 +3,7 @@ import os
 import re
 
 # FIX: unify with installer path
-TRUSTTUNNEL_DIR = "/opt/trustpanel"
+TRUSTTUNNEL_DIR = "/opt/trusttunnel"
 
 
 # -------------------------
