@@ -1,0 +1,10 @@
+[Unit]
+Description=Run cleanup every hour
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=1h
+Unit=trustpanel-cleanup.service
+
+[Install]
+WantedBy=timers.target
