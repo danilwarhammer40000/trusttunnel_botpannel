@@ -47,7 +47,6 @@ def safe_sync():
     """
 
     try:
-        backup_credentials()
         sync_db_to_credentials()
         restart_trusttunnel()
         return "OK"
