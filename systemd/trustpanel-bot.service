@@ -1,0 +1,12 @@
+[Unit]
+Description=TrustPanel Telegram Bot
+After=network.target
+
+[Service]
+User=root
+WorkingDirectory=/opt/trustpanel
+ExecStart=/usr/bin/python3 /opt/trustpanel/bot/bot.py
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
