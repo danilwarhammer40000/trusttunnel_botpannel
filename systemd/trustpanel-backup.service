@@ -1,0 +1,6 @@
+[Unit]
+Description=TrustPanel Backup
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /opt/trustpanel/services/backup.py
