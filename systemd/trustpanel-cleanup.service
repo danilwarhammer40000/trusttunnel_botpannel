@@ -1,0 +1,6 @@
+[Unit]
+Description=TrustPanel Cleanup
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /opt/trustpanel/services/cleanup.py
