@@ -1,6 +1,6 @@
 import os
 import shutil
-from datetime import datetime
+from datetime import datetime, timezone
 
 CREDENTIALS = "/opt/trusttunnel/credentials.toml"
 BACKUP_DIR = "/opt/trusttunnel/backups"
@@ -14,17 +14,26 @@ def run():
 
     os.makedirs(BACKUP_DIR, exist_ok=True)
 
-    ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+    ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     dst = os.path.join(BACKUP_DIR, f"credentials.{ts}.bak")
 
     shutil.copy(CREDENTIALS, dst)
 
-    # чистим старые
-    files = sorted(os.listdir(BACKUP_DIR))
+    # чистим старые (по времени создания файлов)
+    files = sorted(
+        [
+            os.path.join(BACKUP_DIR, f)
+            for f in os.listdir(BACKUP_DIR)
+        ],
+        key=os.path.getmtime
+    )
 
     if len(files) > MAX_BACKUPS:
         for f in files[:-MAX_BACKUPS]:
-            os.remove(os.path.join(BACKUP_DIR, f))
+            try:
+                os.remove(f)
+            except FileNotFoundError:
+                pass
 
     print(f"[BACKUP] Created: {dst}")
 
