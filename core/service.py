@@ -35,3 +35,16 @@ def mark_user_inactive(username: str):
     """
 
     remove_user_from_credentials(username)
+
+def safe_sync():
+    """
+    Backward compatibility layer for bot.py
+    """
+
+    try:
+        sync_db_to_credentials()
+        restart_trusttunnel()
+        return "OK"
+
+    except Exception as e:
+        return f"ERROR: {str(e)}"
