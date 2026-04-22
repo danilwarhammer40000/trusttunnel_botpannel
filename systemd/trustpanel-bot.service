@@ -1,15 +1,37 @@
 [Unit]
-Description=TrustPanel Telegram Bot
+Description=TrustPanel Bot
 After=network.target
+Wants=network.target
 
 [Service]
-User=root
+Type=simple
+
+# Папка проекта
 WorkingDirectory=/opt/trustpanel
-Environment=PYTHONPATH=/opt/trustpanel
+
+# ENV файл
 EnvironmentFile=/opt/trustpanel/.env
+
+# Защита от буферизации логов Python
+Environment="PYTHONUNBUFFERED=1"
+
+# ЯВНЫЙ запуск (без -m, чтобы не было проблем с импортами)
 ExecStart=/opt/trustpanel/venv/bin/python /opt/trustpanel/bot/bot.py
+
+# Автоперезапуск при падении
 Restart=always
-RestartSec=3
+RestartSec=5
+
+# Запуск от root (можно потом ужесточить)
+User=root
+
+# Логи в journalctl
+StandardOutput=journal
+StandardError=journal
+
+# Защита от зависаний (опционально, но полезно)
+TimeoutStartSec=60
+TimeoutStopSec=30
 
 [Install]
 WantedBy=multi-user.target
