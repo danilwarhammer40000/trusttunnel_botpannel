@@ -68,7 +68,7 @@ while true; do
 done
 
 while true; do
-    read -p "TRUSTTUNNEL_DOMAIN (e.g. example.com): " HOSTNAME
+    read -p "TRUSTTUNNEL_DOMAIN (e.g. pelevindmy.ru): " HOSTNAME
     [ -n "$HOSTNAME" ] && break
     echo "TRUSTTUNNEL_DOMAIN cannot be empty"
 done
