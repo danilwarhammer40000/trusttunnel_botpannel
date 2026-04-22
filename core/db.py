@@ -15,11 +15,9 @@ def _ensure():
 
 def load() -> List[Dict]:
     _ensure()
-
     try:
         with open(DB_PATH, "r") as f:
             data = json.load(f)
-
         return [u for u in data if isinstance(u, dict)]
     except:
         return []
@@ -27,24 +25,42 @@ def load() -> List[Dict]:
 
 def save(data: List[Dict]):
     _ensure()
-
     with tempfile.NamedTemporaryFile("w", delete=False, dir=os.path.dirname(DB_PATH)) as tmp:
         json.dump(data, tmp, indent=2)
         tmp_path = tmp.name
-
     os.replace(tmp_path, DB_PATH)
 
+
+# ---------------- CRUD ----------------
 
 def list_users():
     return load()
 
 
+def add_user(user: Dict):
+    data = load()
+    data.append(user)
+    save(data)
+
+
+def delete_user(username: str):
+    data = load()
+    data = [u for u in data if u.get("username") != username]
+    save(data)
+
+
+def get_user(username: str) -> Optional[Dict]:
+    data = load()
+    for u in data:
+        if u.get("username") == username:
+            return u
+    return None
+
+
 def update_user(username: str, **kwargs):
     data = load()
-
     for u in data:
         if u.get("username") == username:
             u.update(kwargs)
             break
-
     save(data)
