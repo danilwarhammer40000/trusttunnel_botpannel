@@ -4,10 +4,7 @@ from datetime import datetime, timezone
 sys.path.append("/opt/trustpanel")
 
 from core.db import list_users, update_user
-from core.service import (
-    full_resync_and_reload,
-    mark_user_inactive
-)
+from core.service import full_resync_and_reload, mark_user_inactive
 
 
 def run():
@@ -27,7 +24,7 @@ def run():
         try:
             exp_dt = datetime.strptime(expires, "%Y-%m-%d")
             exp_dt = exp_dt.replace(tzinfo=timezone.utc)
-        except Exception:
+        except:
             continue
 
         if exp_dt < now:
@@ -40,7 +37,7 @@ def run():
             changed = True
 
     if changed:
-        print("[CLEANUP] Triggering full resync + reload")
+        print("[CLEANUP] FULL RESYNC")
         full_resync_and_reload()
 
 
