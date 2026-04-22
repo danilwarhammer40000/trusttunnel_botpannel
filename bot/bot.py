@@ -1,3 +1,4 @@
+from datetime import datetime, timedelta
 import asyncio
 import os
 from datetime import datetime
@@ -160,9 +161,12 @@ async def extend_handler(call: CallbackQuery, state: FSMContext):
         update_user(username, expires_at=None, status="active")
 
     # ---------------- DAYS ----------------
-    elif mode in ["3", "30"]:
-        days = int(mode)
-        update_user(username, expires_at=days, status="active")
+   elif mode in ["3", "30"]:
+    days = int(mode)
+
+    expires_at = (datetime.utcnow() + timedelta(days=days)).strftime("%Y-%m-%d")
+
+    update_user(username, expires_at=expires_at, status="active")
 
     # ---------------- MANUAL DATE ----------------
     elif mode == "manual":
@@ -308,7 +312,10 @@ async def add_days(msg: Message, state: FSMContext):
         await msg.answer("Use 3 / 30 / 0")
         return
 
-    expires_at = None if days == 0 else days
+    if days == 0:
+    expires_at = None
+else:
+    expires_at = (datetime.utcnow() + timedelta(days=days)).strftime("%Y-%m-%d")
 
     add_user({
         "username": username,
