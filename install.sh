@@ -1,39 +1,34 @@
 #!/bin/bash
-
 set -e
 
-echo "=== TrustPanel Installer (Fixed Production Version) ==="
-
+echo "=== TrustPanel Installer (Production Fixed) ==="
 
 # -------------------------
-# SYSTEM UPDATE
+# SYSTEM
 # -------------------------
-echo "[1/7] Updating system..."
 apt update && apt upgrade -y
-
-echo "[2/7] Installing dependencies..."
 apt install -y python3 python3-venv python3-pip git
 
 
 # -------------------------
-# PROJECT PATH
+# PATH
 # -------------------------
 DEFAULT_DIR="/opt/trustpanel"
 read -p "Install path [/opt/trustpanel]: " PROJECT_DIR
 PROJECT_DIR=${PROJECT_DIR:-$DEFAULT_DIR}
 
-echo "[INFO] Installing repo to: $PROJECT_DIR"
+echo "[INFO] Install path: $PROJECT_DIR"
 
 
 # -------------------------
-# CLONE OR UPDATE
+# CLONE / UPDATE
 # -------------------------
 if [ -d "$PROJECT_DIR/.git" ]; then
-    echo "[INFO] Existing repo found, pulling updates..."
+    echo "[INFO] Updating repo..."
     cd "$PROJECT_DIR"
     git pull
 else
-    echo "[INFO] Cloning repository..."
+    echo "[INFO] Cloning repo..."
     rm -rf "$PROJECT_DIR"
     git clone https://github.com/danilwarhammer40000/trusttunnel_botpannel.git "$PROJECT_DIR"
     cd "$PROJECT_DIR"
@@ -41,13 +36,11 @@ fi
 
 
 # -------------------------
-# VENV (RECREATE SAFE)
+# VENV
 # -------------------------
-echo "[3/7] Setting up virtual environment..."
+echo "[INFO] Setting up venv..."
 
-if [ ! -d "$PROJECT_DIR/venv" ]; then
-    python3 -m venv venv
-fi
+python3 -m venv "$PROJECT_DIR/venv"
 
 source "$PROJECT_DIR/venv/bin/activate"
 
@@ -56,42 +49,21 @@ pip install -r requirements.txt
 
 
 # -------------------------
-# MANUAL CONFIG
+# CONFIG
 # -------------------------
-echo "[4/7] Manual configuration"
-
-read -p "Enter TRUSTTUNNEL HOSTNAME (e.g. example.ru): " HOSTNAME
-
-read -p "TrustTunnel binary path [/opt/trusttunnel]: " TT_PATH
-TT_PATH=${TT_PATH:-/opt/trusttunnel}
-
-BINARY="$TT_PATH/trusttunnel_endpoint"
-
-if [ ! -f "$BINARY" ]; then
-    echo "[WARN] binary not found: $BINARY"
-fi
-
-
-# -------------------------
-# ENV FILE (SAFE REWRITE)
-# -------------------------
-echo "[5/7] Creating .env"
-
 read -p "BOT_TOKEN: " BOT_TOKEN
 read -p "ADMIN_ID: " ADMIN_ID
 
 cat > "$PROJECT_DIR/.env" <<EOF
 BOT_TOKEN=$BOT_TOKEN
 ADMIN_ID=$ADMIN_ID
-TRUSTTUNNEL_DOMAIN=$HOSTNAME
-TRUSTTUNNEL_ENDPOINT_BIN=$BINARY
 EOF
 
 
 # -------------------------
-# SYSTEMD SERVICE (FIXED EXEC PATH)
+# SYSTEMD (FIXED CORE ISSUE)
 # -------------------------
-echo "[6/7] Creating systemd service..."
+echo "[INFO] Creating systemd service..."
 
 cat > /etc/systemd/system/trustpanel.service <<EOF
 [Unit]
@@ -99,10 +71,13 @@ Description=TrustPanel Bot
 After=network.target
 
 [Service]
+Type=simple
 WorkingDirectory=$PROJECT_DIR
-EnvironmentFile=$PROJECT_DIR/.env
 
-ExecStart=$PROJECT_DIR/venv/bin/python /opt/trustpanel/bot/bot.py
+EnvironmentFile=$PROJECT_DIR/.env
+Environment=PYTHONPATH=$PROJECT_DIR
+
+ExecStart=$PROJECT_DIR/venv/bin/python -m bot.bot
 
 Restart=always
 RestartSec=3
@@ -118,18 +93,16 @@ EOF
 
 
 # -------------------------
-# SYSTEMD APPLY
+# START
 # -------------------------
-echo "[7/7] Enabling service..."
-
 systemctl daemon-reload
 systemctl enable trustpanel
 systemctl restart trustpanel
 
 echo "=== INSTALL COMPLETE ==="
 echo ""
-echo "Update command:"
-echo "cd $PROJECT_DIR && git pull && /opt/trustpanel/venv/bin/pip install -r requirements.txt && systemctl restart trustpanel"
+echo "Logs:"
+echo "journalctl -u trustpanel -f"
 echo ""
 
 systemctl status trustpanel --no-pager
