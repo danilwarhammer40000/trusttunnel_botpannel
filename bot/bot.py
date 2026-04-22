@@ -1,7 +1,6 @@
-from datetime import datetime, timedelta
 import asyncio
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from dotenv import load_dotenv
 
@@ -55,8 +54,8 @@ class AddUser(StatesGroup):
 
 
 class ExtendUser(StatesGroup):
-    mode = State()   # выбор типа продления
-    manual = State() # ручная дата
+    mode = State()
+    manual = State()
 
 
 # ---------------- KEYBOARD ----------------
@@ -93,7 +92,7 @@ async def cancel(msg: Message, state: FSMContext):
     await msg.answer("Menu:", reply_markup=main_menu)
 
 
-# ---------------- MENU HANDLERS ----------------
+# ---------------- ADD USER FLOW ----------------
 
 @dp.message(F.text == "➕ Add user")
 async def menu_add(msg: Message, state: FSMContext):
@@ -101,7 +100,73 @@ async def menu_add(msg: Message, state: FSMContext):
     await msg.answer("Enter username:", reply_markup=cancel_kb)
 
 
-# ---------------- FIXED LIST ----------------
+@dp.message(AddUser.username)
+async def add_username(msg: Message, state: FSMContext):
+    await state.update_data(username=msg.text)
+    await state.set_state(AddUser.password)
+    await msg.answer("Enter password:")
+
+
+@dp.message(AddUser.password)
+async def add_password(msg: Message, state: FSMContext):
+    await state.update_data(password=msg.text)
+    await state.set_state(AddUser.days)
+
+    kb = ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="3")],
+            [KeyboardButton(text="30")],
+            [KeyboardButton(text="0")]
+        ],
+        resize_keyboard=True
+    )
+
+    await msg.answer("Select duration (days):", reply_markup=kb)
+
+
+@dp.message(AddUser.days)
+async def add_days(msg: Message, state: FSMContext):
+    data = await state.get_data()
+
+    username = data["username"]
+    password = data["password"]
+
+    try:
+        days = int(msg.text.strip())
+    except:
+        await msg.answer("Use 3 / 30 / 0")
+        return
+
+    if days == 0:
+        expires_at = None
+    else:
+        expires_at = (datetime.utcnow() + timedelta(days=days)).strftime("%Y-%m-%d")
+
+    add_user({
+        "username": username,
+        "password": password,
+        "created_at": "now",
+        "expires_at": expires_at,
+        "status": "active"
+    })
+
+    safe_sync()
+
+    link = generate_link(username, DOMAIN)
+
+    await msg.answer(
+        f"👤 Username: {username}\n"
+        f"🔑 Password: {password}\n"
+        f"⏳ Expires: {expires_at or '∞'}\n\n"
+        f"🔗 {link}",
+        reply_markup=ReplyKeyboardRemove()
+    )
+
+    await msg.answer("Menu:", reply_markup=main_menu)
+    await state.clear()
+
+
+# ---------------- LIST USERS ----------------
 
 @dp.message(F.text == "📋 List users")
 async def menu_list(msg: Message):
@@ -156,30 +221,23 @@ async def extend_handler(call: CallbackQuery, state: FSMContext):
         await call.message.answer("User not found")
         return
 
-   # ---------------- UNLIMITED ----------------
-if mode == "0":
-    update_user(username, expires_at=None, status="active")
+    if mode == "0":
+        update_user(username, expires_at=None, status="active")
 
-# ---------------- DAYS ----------------
-elif mode in ["3", "30"]:
-    days = int(mode)
+    elif mode in ["3", "30"]:
+        days = int(mode)
+        expires_at = (datetime.utcnow() + timedelta(days=days)).strftime("%Y-%m-%d")
+        update_user(username, expires_at=expires_at, status="active")
 
-    expires_at = (
-        datetime.utcnow() + timedelta(days=days)
-    ).strftime("%Y-%m-%d")
+    elif mode == "manual":
+        await state.set_state(ExtendUser.manual)
+        await call.message.answer("Send date: YYYY-MM-DD")
+        await call.answer()
+        return
 
-    update_user(username, expires_at=expires_at, status="active")
+    safe_sync()
 
-# ---------------- MANUAL DATE ----------------
-elif mode == "manual":
-    await state.set_state(ExtendUser.manual)
-    await call.message.answer("Send date: YYYY-MM-DD")
-    await call.answer()
-    return
-
-safe_sync()
-
-await state.clear()
+    await state.clear()
     await call.message.answer(f"Updated: {username}")
     await call.answer()
 
@@ -273,74 +331,6 @@ async def link_callback(call: CallbackQuery):
     )
 
     await call.answer()
-
-
-# ---------------- ADD FLOW (UNCHANGED) ----------------
-
-@dp.message(AddUser.username)
-async def add_username(msg: Message, state: FSMContext):
-    await state.update_data(username=msg.text)
-    await state.set_state(AddUser.password)
-    await msg.answer("Enter password:")
-
-
-@dp.message(AddUser.password)
-async def add_password(msg: Message, state: FSMContext):
-    await state.update_data(password=msg.text)
-    await state.set_state(AddUser.days)
-
-    kb = ReplyKeyboardMarkup(
-        keyboard=[
-            [KeyboardButton(text="3")],
-            [KeyboardButton(text="30")],
-            [KeyboardButton(text="0")]
-        ],
-        resize_keyboard=True
-    )
-
-    await msg.answer("Select duration (days):", reply_markup=kb)
-
-
-@dp.message(AddUser.days)
-async def add_days(msg: Message, state: FSMContext):
-    data = await state.get_data()
-
-    username = data["username"]
-    password = data["password"]
-
-    try:
-        days = int(msg.text.strip())
-    except:
-        await msg.answer("Use 3 / 30 / 0")
-        return
-
-    if days == 0:
-    expires_at = None
-else:
-    expires_at = (datetime.utcnow() + timedelta(days=days)).strftime("%Y-%m-%d")
-
-    add_user({
-        "username": username,
-        "password": password,
-        "created_at": "now",
-        "expires_at": expires_at,
-        "status": "active"
-    })
-
-    safe_sync()
-
-    link = generate_link(username, DOMAIN)
-
-    await msg.answer(
-        f"👤 Username: {username}\n"
-        f"🔑 Password: {password}\n"
-        f"⏳ Expires: {expires_at or '∞'}\n\n"
-        f"🔗 {link}",
-        reply_markup=ReplyKeyboardRemove()
-    )
-
-    await msg.answer("Menu:", reply_markup=main_menu)
-    await state.clear()
 
 
 # ---------------- MAIN ----------------
