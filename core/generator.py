@@ -1,27 +1,24 @@
 import subprocess
 import os
+import re
 
-TRUSTTUNNEL_DIR = "/opt/trusttunnel"
+# FIX: unify with installer path
+TRUSTTUNNEL_DIR = "/opt/trustpanel"
 
 
 # -------------------------
 # RESOLVE BINARY
 # -------------------------
 def resolve_endpoint_binary():
-    """
-    Priority:
-    1. ENV TRUSTTUNNEL_ENDPOINT_BIN
-    2. /opt/trusttunnel/trusttunnel_endpoint
-    3. None (fallback mode)
-    """
-
     env_path = os.getenv("TRUSTTUNNEL_ENDPOINT_BIN")
+
     if env_path:
         env_path = os.path.abspath(env_path)
         if os.path.isfile(env_path):
             return env_path
 
     server_path = os.path.join(TRUSTTUNNEL_DIR, "trusttunnel_endpoint")
+
     if os.path.isfile(server_path):
         return server_path
 
@@ -29,15 +26,24 @@ def resolve_endpoint_binary():
 
 
 # -------------------------
-# DOMAIN VALIDATION
+# DOMAIN VALIDATION (HARDENED)
 # -------------------------
 def validate_domain(domain: str):
     if not domain:
         raise ValueError("Domain is empty")
 
-    # простая защита от мусора
-    if " " in domain or domain.startswith("http"):
-        raise ValueError(f"Invalid domain: {domain}")
+    domain = domain.strip()
+
+    # block obvious injections
+    if any(x in domain for x in [" ", ";", "&", "|", "$", "`"]):
+        raise ValueError("Invalid domain (suspicious chars)")
+
+    if domain.startswith("http://") or domain.startswith("https://"):
+        raise ValueError("Domain must not include scheme")
+
+    # RFC-ish simple validation
+    if not re.match(r"^[a-zA-Z0-9.-]+$", domain):
+        raise ValueError("Invalid domain format")
 
 
 # -------------------------
@@ -48,14 +54,11 @@ def generate_link(username: str, domain: str) -> str:
 
     binary_path = resolve_endpoint_binary()
 
-    # -------------------------
-    # FALLBACK MODE
-    # -------------------------
-    if not binary_path:
-        return f"https://{domain}/connect/{username}"
+    fallback_url = f"https://{domain}/connect/{username}"
 
-    if not os.path.isfile(binary_path):
-        return f"https://{domain}/connect/{username}"
+    # fallback if binary missing
+    if not binary_path:
+        return fallback_url
 
     cmd = [
         binary_path,
@@ -71,23 +74,27 @@ def generate_link(username: str, domain: str) -> str:
             cwd=os.path.dirname(binary_path),
             capture_output=True,
             text=True,
-            timeout=15
+            timeout=15,
+            env={"PATH": "/usr/bin:/bin"}
         )
 
         if result.returncode != 0:
-            # НЕ скрываем ошибку полностью
-            raise RuntimeError(result.stderr.strip())
+            # loggable error but safe fallback
+            print(f"[generator error] {result.stderr.strip()}")
+            return fallback_url
 
         output = result.stdout.strip()
 
         if not output:
-            raise RuntimeError("Empty TrustTunnel output")
+            print("[generator warning] empty output from endpoint")
+            return fallback_url
 
         return output
 
     except subprocess.TimeoutExpired:
-        raise RuntimeError("TrustTunnel timeout (15s)")
+        print("[generator timeout]")
+        return fallback_url
 
     except Exception as e:
-        # fallback только если всё сломалось полностью
-        return f"https://{domain}/connect/{username}"
+        print(f"[generator exception] {str(e)}")
+        return fallback_url
