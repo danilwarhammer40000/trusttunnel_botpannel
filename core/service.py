@@ -5,7 +5,6 @@ from core.credentials import (
     remove_user_from_credentials,
     load_credentials
 )
-from core.credentials import backup_credentials
 
 TRUSTTUNNEL_SERVICE = "trusttunnel"
 
