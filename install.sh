@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
-echo "=== TrustPanel Installer (Fixed) ==="
+echo "=== TrustPanel Installer (Final) ==="
 
 # -------------------------
 # CONFIG
@@ -86,7 +86,7 @@ chmod 600 "$PROJECT_DIR/.env"
 # -------------------------
 # SYSTEMD BOT
 # -------------------------
-echo "[6/8] Installing systemd services..."
+echo "[6/8] Installing bot service..."
 
 cat > /etc/systemd/system/trustpanel-bot.service <<EOF
 [Unit]
@@ -118,25 +118,27 @@ WantedBy=multi-user.target
 EOF
 
 # -------------------------
-# OPTIONAL SERVICES
+# INSTALL OPTIONAL SYSTEMD UNITS
 # -------------------------
-echo "[6.1] Installing optional services if present..."
+echo "[6.1] Installing systemd units..."
 
-install_optional_service () {
+install_unit () {
     local name=$1
-    local src="$PROJECT_DIR/services/$name"
+    local src="$PROJECT_DIR/systemd/$name"
 
     if [ -f "$src" ]; then
         echo "[INFO] Installing $name"
         cp "$src" "/etc/systemd/system/$name"
         systemctl enable "$name"
     else
-        echo "[SKIP] $name not found in repo"
+        echo "[SKIP] $name not found"
     fi
 }
 
-install_optional_service "trustpanel-cleanup.service"
-install_optional_service "trustpanel-backup.service"
+install_unit "trustpanel-cleanup.service"
+install_unit "trustpanel-backup.service"
+install_unit "trustpanel-cleanup.timer"
+install_unit "trustpanel-backup.timer"
 
 # -------------------------
 # SYSTEMD APPLY
@@ -149,16 +151,9 @@ systemctl stop trustpanel-bot.service 2>/dev/null || true
 systemctl enable trustpanel-bot.service
 systemctl restart trustpanel-bot.service
 
-# restart optional safely
-safe_restart () {
-    local svc=$1
-    if systemctl list-unit-files | grep -q "$svc"; then
-        systemctl restart "$svc"
-    fi
-}
-
-safe_restart "trustpanel-cleanup.service"
-safe_restart "trustpanel-backup.service"
+# старт таймеров (если есть)
+systemctl start trustpanel-cleanup.timer 2>/dev/null || true
+systemctl start trustpanel-backup.timer 2>/dev/null || true
 
 # -------------------------
 # HEALTH CHECK
@@ -175,6 +170,10 @@ else
     echo ""
     journalctl -u trustpanel-bot.service -n 50 --no-pager || true
 fi
+
+echo ""
+echo "=== STATUS ==="
+systemctl list-timers | grep trustpanel || true
 
 echo ""
 echo "DONE"
