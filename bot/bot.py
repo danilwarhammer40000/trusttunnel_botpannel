@@ -287,8 +287,6 @@ async def delete_callback(call: CallbackQuery):
     username = call.data.split(":")[1]
 
     delete_user(username)
-    remove_user_from_credentials(username)
-
     safe_sync()
 
     await call.message.answer(f"❌ Deleted: {username}")
