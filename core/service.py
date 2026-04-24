@@ -1,12 +1,22 @@
 import subprocess
 from core.db import list_users
-from core.credentials import rebuild_credentials_from_db, remove_user_from_credentials
+from core.credentials import rebuild_credentials_from_db
 
-TRUSTTUNNEL_SERVICE = "trusttunnel"
+TRUSTTUNNEL_SERVICE = "trusttunnel.service"
 
 
 def restart_trusttunnel():
-    subprocess.run(["systemctl", "restart", TRUSTTUNNEL_SERVICE])
+    result = subprocess.run(
+        ["systemctl", "restart", TRUSTTUNNEL_SERVICE],
+        capture_output=True,
+        text=True
+    )
+
+    if result.returncode != 0:
+        print("[ERROR] trusttunnel restart failed:")
+        print(result.stderr)
+    else:
+        print("[OK] trusttunnel restarted")
 
 
 # ---------------- FULL SYNC ----------------
@@ -18,17 +28,16 @@ def full_resync_and_reload():
 
 
 def mark_user_inactive(username: str):
-    remove_user_from_credentials(username)
+    # теперь просто логический маркер (файл пересоберётся при sync)
+    pass
 
 
-# ---------------- FIXED SAFE SYNC ----------------
+# ---------------- SAFE SYNC ----------------
 
 def safe_sync():
-    """
-    DB → TOML → restart
-    """
     try:
         full_resync_and_reload()
         return "OK"
     except Exception as e:
+        print("[SYNC ERROR]", str(e))
         return f"ERROR: {str(e)}"
