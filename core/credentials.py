@@ -1,4 +1,3 @@
-import toml
 import os
 import tempfile
 from datetime import datetime
@@ -14,11 +13,31 @@ def load_credentials():
     if not os.path.exists(CREDENTIALS_PATH):
         return {"client": []}
 
+    clients = []
+
     try:
-        data = toml.load(CREDENTIALS_PATH)
-        if "client" not in data:
-            data["client"] = []
-        return data
+        with open(CREDENTIALS_PATH, "r") as f:
+            current = {}
+
+            for line in f:
+                line = line.strip()
+
+                if line == "[[client]]":
+                    if current:
+                        clients.append(current)
+                    current = {}
+
+                elif line.startswith("username"):
+                    current["username"] = line.split("=", 1)[1].strip().strip('"')
+
+                elif line.startswith("password"):
+                    current["password"] = line.split("=", 1)[1].strip().strip('"')
+
+            if current:
+                clients.append(current)
+
+        return {"client": clients}
+
     except Exception:
         return {"client": []}
 
@@ -28,31 +47,48 @@ def atomic_write(data):
 
     with lock:
         with tempfile.NamedTemporaryFile("w", delete=False, dir=os.path.dirname(CREDENTIALS_PATH)) as tmp:
-            toml.dump(data, tmp)
+
+            for client in data.get("client", []):
+                tmp.write("[[client]]\n")
+                tmp.write(f'username = "{client["username"]}"\n')
+                tmp.write(f'password = "{client["password"]}"\n\n')
+
             tmp_path = tmp.name
 
         os.replace(tmp_path, CREDENTIALS_PATH)
 
 
 # -------------------------
-# 🔥 FULL REBUILD (MAIN FIX)
+# FULL REBUILD
 # -------------------------
 def rebuild_credentials_from_db(users):
-    """
-    ВАЖНО:
-    TOML = полностью пересобирается из JSON
-    никаких incremental updates
-    """
-
     clients = []
+
+    now = datetime.utcnow()
 
     for u in users:
         if u.get("status") != "active":
             continue
 
+        # expiration check
+        exp = u.get("expires_at")
+        if exp:
+            try:
+                exp_dt = datetime.fromisoformat(exp)
+                if exp_dt < now:
+                    continue
+            except Exception:
+                continue
+
+        username = u.get("username")
+        password = u.get("password")
+
+        if not username or not password:
+            continue
+
         clients.append({
-            "username": u["username"],
-            "password": u.get("password", "")
+            "username": username,
+            "password": password
         })
 
     atomic_write({"client": clients})
