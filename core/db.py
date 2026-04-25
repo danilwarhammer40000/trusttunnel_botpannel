@@ -64,3 +64,14 @@ def update_user(username: str, **kwargs):
             u.update(kwargs)
             break
     save(data)
+
+def get_user_by_telegram_id(tg_id: int):
+    data = load()
+    for u in data:
+        if u.get("telegram_id") == tg_id:
+            return u
+    return None
+
+
+def username_exists(username: str) -> bool:
+    return get_user(username) is not None
