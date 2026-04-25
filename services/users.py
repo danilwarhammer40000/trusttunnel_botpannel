@@ -9,6 +9,14 @@ from core.db import (
     username_exists
 )
 
+import secrets
+import string
+
+
+def generate_password():
+    alphabet = string.ascii_letters + string.digits
+    return ''.join(secrets.choice(alphabet) for _ in range(16))
+
 USERNAME_RE = re.compile(r"^[a-z0-9]{4,16}$")
 
 
