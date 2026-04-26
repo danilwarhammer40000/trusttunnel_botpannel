@@ -8,7 +8,7 @@ from services.users import (
     extend_user_safe
 )
 
-from core.db import get_user, get_all_users
+from core.db import get_user, list_users
 
 app = FastAPI()
 
@@ -36,7 +36,7 @@ class ActivatePaidRequest(BaseModel):
 
 @app.get("/users/list")
 def users_list():
-    return get_all_users()
+    return list_users()
 
 
 @app.get("/users/{username}")
