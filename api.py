@@ -19,9 +19,9 @@ print("🔥 TRUSTPANEL API LOADED")
 # ================= MODELS =================
 
 class CreateUserRequest(BaseModel):
-    telegram_id: int
+    telegram_id: int | None = None
     username: str
-    plan: str  # trial / paid
+    plan: str
 
 
 class ExtendRequest(BaseModel):
@@ -45,7 +45,7 @@ def users_list():
 def user_detail(username: str):
     user = get_user(username)
     if not user:
-        raise HTTPException(status_code=404, detail="USER_NOT_FOUND")
+        raise HTTPException(404, "USER_NOT_FOUND")
     return user
 
 
@@ -61,7 +61,6 @@ def create_user(data: CreateUserRequest):
             plan=data.plan
         )
 
-        # trial активируем только тут
         if data.plan == "trial":
             activate_trial(user["username"])
 
@@ -73,7 +72,7 @@ def create_user(data: CreateUserRequest):
         }
 
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(400, str(e))
 
 
 @app.post("/users/paid")
@@ -82,7 +81,7 @@ def paid(data: ActivatePaidRequest):
         activate_paid(data.username, data.days)
         return {"status": "paid_activated"}
     except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(400, str(e))
 
 
 @app.post("/users/extend")
@@ -91,4 +90,4 @@ def extend(data: ExtendRequest):
         extend_user_safe(data.username, data.days)
         return {"status": "extended"}
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(400, str(e))
