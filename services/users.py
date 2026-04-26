@@ -1,4 +1,6 @@
 import re
+import secrets
+import string
 from datetime import datetime, timedelta
 
 from core.db import (
@@ -6,19 +8,20 @@ from core.db import (
     get_user,
     update_user,
     get_user_by_telegram_id,
-    username_exists
+    list_users
 )
 
-import secrets
-import string
+USERNAME_RE = re.compile(r"^[a-z0-9]{4,16}$")
 
+
+# ================= PASSWORD =================
 
 def generate_password():
     alphabet = string.ascii_letters + string.digits
     return ''.join(secrets.choice(alphabet) for _ in range(16))
 
-USERNAME_RE = re.compile(r"^[a-z0-9]{4,16}$")
 
+# ================= VALIDATION =================
 
 def validate_username(username: str):
     username = username.lower().strip()
@@ -26,14 +29,18 @@ def validate_username(username: str):
     if not USERNAME_RE.match(username):
         raise ValueError("INVALID_USERNAME")
 
-    if username_exists(username):
-        raise ValueError("USERNAME_TAKEN")
+    # проверка через список (единый источник истины)
+    for u in list_users():
+        if u.get("username") == username:
+            raise ValueError("USERNAME_TAKEN")
 
     return username
 
 
+# ================= CREATE USER =================
+
 def create_user_safe(tg_id: int, username: str, password: str, plan: str):
-    # 1 user = 1 telegram
+    # 1 Telegram = 1 user
     if get_user_by_telegram_id(tg_id):
         raise ValueError("USER_ALREADY_EXISTS")
 
@@ -55,6 +62,8 @@ def create_user_safe(tg_id: int, username: str, password: str, plan: str):
     return user
 
 
+# ================= TRIAL =================
+
 def activate_trial(username: str):
     expires = datetime.utcnow() + timedelta(days=3)
 
@@ -66,6 +75,8 @@ def activate_trial(username: str):
     )
 
 
+# ================= PAID =================
+
 def activate_paid(username: str, days: int):
     expires = datetime.utcnow() + timedelta(days=days)
 
@@ -76,6 +87,8 @@ def activate_paid(username: str, days: int):
     )
 
 
+# ================= EXTEND =================
+
 def extend_user_safe(username: str, days: int):
     user = get_user(username)
     if not user:
@@ -85,15 +98,13 @@ def extend_user_safe(username: str, days: int):
 
     if user.get("expires_at"):
         current = datetime.strptime(user["expires_at"], "%Y-%m-%d")
-        if current > now:
-            new_exp = current + timedelta(days=days)
-        else:
-            new_exp = now + timedelta(days=days)
+        new_exp = current if current > now else now
+        new_exp = new_exp + timedelta(days=days)
     else:
-        new_exp = None
+        new_exp = now + timedelta(days=days)
 
     update_user(
         username,
-        expires_at=new_exp.strftime("%Y-%m-%d") if new_exp else None,
+        expires_at=new_exp.strftime("%Y-%m-%d"),
         status="active"
     )
