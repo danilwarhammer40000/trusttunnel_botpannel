@@ -13,13 +13,15 @@ from core.db import get_user, list_users
 
 app = FastAPI()
 
+print("🔥 API UPDATED")  # для проверки что грузится правильный файл
+
 
 # ===== MODELS =====
 
 class CreateUserRequest(BaseModel):
     telegram_id: int
     username: str
-    plan: str
+    plan: str  # trial / paid
 
 
 class ExtendRequest(BaseModel):
@@ -50,7 +52,7 @@ def user_detail(username: str):
 @app.post("/users/create")
 def create_user(data: CreateUserRequest):
     try:
-        # ✅ пароль генерим ТУТ
+        # 🔐 генерируем пароль на стороне API
         password = generate_password()
 
         user = create_user_safe(
@@ -60,14 +62,17 @@ def create_user(data: CreateUserRequest):
             plan=data.plan
         )
 
-        # ✅ trial логика в API
+        # 🎁 если trial — сразу активируем
         if data.plan == "trial":
             activate_trial(user["username"])
 
-        # ✅ возвращаем пароль боту
-        user["password"] = password
-
-        return user
+        # 📦 возвращаем пароль в ответе (для бота)
+        return {
+            "username": user["username"],
+            "password": password,
+            "plan": user["plan"],
+            "status": "active" if data.plan == "trial" else "inactive"
+        }
 
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
