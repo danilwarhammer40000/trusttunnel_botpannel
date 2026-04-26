@@ -17,8 +17,7 @@ USERNAME_RE = re.compile(r"^[a-z0-9]{4,16}$")
 # ================= PASSWORD =================
 
 def generate_password():
-    alphabet = string.ascii_letters + string.digits
-    return ''.join(secrets.choice(alphabet) for _ in range(16))
+    return ''.join(secrets.choice(string.ascii_letters + string.digits) for _ in range(16))
 
 
 # ================= VALIDATION =================
@@ -29,7 +28,6 @@ def validate_username(username: str):
     if not USERNAME_RE.match(username):
         raise ValueError("INVALID_USERNAME")
 
-    # проверка через список (единый источник истины)
     for u in list_users():
         if u.get("username") == username:
             raise ValueError("USERNAME_TAKEN")
@@ -40,8 +38,10 @@ def validate_username(username: str):
 # ================= CREATE USER =================
 
 def create_user_safe(tg_id: int, username: str, password: str, plan: str):
-    # 1 Telegram = 1 user
-    if get_user_by_telegram_id(tg_id):
+    existing = get_user_by_telegram_id(tg_id)
+
+    # ⚠️ allow reuse ONLY if no user exists
+    if existing:
         raise ValueError("USER_ALREADY_EXISTS")
 
     username = validate_username(username)
@@ -52,7 +52,6 @@ def create_user_safe(tg_id: int, username: str, password: str, plan: str):
         "created_at": datetime.utcnow().isoformat(),
         "expires_at": None,
         "status": "inactive",
-
         "telegram_id": tg_id,
         "plan": plan,
         "trial_used": False
@@ -98,10 +97,11 @@ def extend_user_safe(username: str, days: int):
 
     if user.get("expires_at"):
         current = datetime.strptime(user["expires_at"], "%Y-%m-%d")
-        new_exp = current if current > now else now
-        new_exp = new_exp + timedelta(days=days)
+        base = current if current > now else now
     else:
-        new_exp = now + timedelta(days=days)
+        base = now
+
+    new_exp = base + timedelta(days=days)
 
     update_user(
         username,
