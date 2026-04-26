@@ -13,10 +13,10 @@ from core.db import get_user, list_users
 
 app = FastAPI()
 
-print("🔥 API UPDATED")  # для проверки что грузится правильный файл
+print("🔥 TRUSTPANEL API LOADED")
 
 
-# ===== MODELS =====
+# ================= MODELS =================
 
 class CreateUserRequest(BaseModel):
     telegram_id: int
@@ -34,7 +34,7 @@ class ActivatePaidRequest(BaseModel):
     days: int
 
 
-# ===== ENDPOINTS =====
+# ================= USERS =================
 
 @app.get("/users/list")
 def users_list():
@@ -52,7 +52,6 @@ def user_detail(username: str):
 @app.post("/users/create")
 def create_user(data: CreateUserRequest):
     try:
-        # 🔐 генерируем пароль на стороне API
         password = generate_password()
 
         user = create_user_safe(
@@ -62,16 +61,15 @@ def create_user(data: CreateUserRequest):
             plan=data.plan
         )
 
-        # 🎁 если trial — сразу активируем
+        # trial активируем только тут
         if data.plan == "trial":
             activate_trial(user["username"])
 
-        # 📦 возвращаем пароль в ответе (для бота)
         return {
             "username": user["username"],
             "password": password,
             "plan": user["plan"],
-            "status": "active" if data.plan == "trial" else "inactive"
+            "status": user["status"]
         }
 
     except ValueError as e:
