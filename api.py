@@ -5,7 +5,8 @@ from services.users import (
     create_user_safe,
     activate_trial,
     activate_paid,
-    extend_user_safe
+    extend_user_safe,
+    generate_password
 )
 
 from core.db import get_user, list_users
@@ -18,7 +19,6 @@ app = FastAPI()
 class CreateUserRequest(BaseModel):
     telegram_id: int
     username: str
-    password: str
     plan: str
 
 
@@ -50,23 +50,26 @@ def user_detail(username: str):
 @app.post("/users/create")
 def create_user(data: CreateUserRequest):
     try:
+        # ✅ пароль генерим ТУТ
+        password = generate_password()
+
         user = create_user_safe(
             tg_id=data.telegram_id,
             username=data.username,
-            password=data.password,
+            password=password,
             plan=data.plan
         )
+
+        # ✅ trial логика в API
+        if data.plan == "trial":
+            activate_trial(user["username"])
+
+        # ✅ возвращаем пароль боту
+        user["password"] = password
+
         return user
+
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-
-@app.post("/users/trial")
-def trial(username: str):
-    try:
-        activate_trial(username)
-        return {"status": "trial_activated"}
-    except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
 
