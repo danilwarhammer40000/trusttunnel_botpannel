@@ -19,7 +19,7 @@ print("🔥 TRUSTPANEL API LOADED")
 # ================= MODELS =================
 
 class CreateUserRequest(BaseModel):
-    telegram_id: int | None = None
+    telegram_id: int
     username: str
     plan: str
 
