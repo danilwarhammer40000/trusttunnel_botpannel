@@ -17,7 +17,8 @@ USERNAME_RE = re.compile(r"^[a-z0-9]{4,16}$")
 # ================= PASSWORD =================
 
 def generate_password():
-    return ''.join(secrets.choice(string.ascii_letters + string.digits) for _ in range(16))
+    alphabet = string.ascii_letters + string.digits
+    return ''.join(secrets.choice(alphabet) for _ in range(16))
 
 
 # ================= VALIDATION =================
@@ -40,7 +41,6 @@ def validate_username(username: str):
 def create_user_safe(tg_id: int, username: str, password: str, plan: str):
     existing = get_user_by_telegram_id(tg_id)
 
-    # ⚠️ allow reuse ONLY if no user exists
     if existing:
         raise ValueError("USER_ALREADY_EXISTS")
 
