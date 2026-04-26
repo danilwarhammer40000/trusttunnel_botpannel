@@ -41,6 +41,7 @@ def add_user(user: Dict):
     data = load()
     data.append(user)
     save(data)
+    return user
 
 
 def delete_user(username: str):
@@ -50,8 +51,7 @@ def delete_user(username: str):
 
 
 def get_user(username: str) -> Optional[Dict]:
-    data = load()
-    for u in data:
+    for u in load():
         if u.get("username") == username:
             return u
     return None
@@ -65,10 +65,12 @@ def update_user(username: str, **kwargs):
             break
     save(data)
 
+
+# ---------------- TELEGRAM SAFE LOOKUP ----------------
+
 def get_user_by_telegram_id(tg_id: int):
-    data = load()
-    for u in data:
-        if u.get("telegram_id") == tg_id:
+    for u in load():
+        if str(u.get("telegram_id")) == str(tg_id):
             return u
     return None
 
