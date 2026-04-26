@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
-echo "=== TrustPanel Installer (Final) ==="
+echo "=== TrustPanel Installer (Final + API) ==="
 
 # -------------------------
 # CONFIG
@@ -12,7 +12,7 @@ PROJECT_DIR="${PROJECT_DIR:-$DEFAULT_DIR}"
 # -------------------------
 # SYSTEM DEPENDENCIES
 # -------------------------
-echo "[1/8] Installing system dependencies..."
+echo "[1/9] Installing system dependencies..."
 
 export DEBIAN_FRONTEND=noninteractive
 apt update -y
@@ -22,7 +22,7 @@ apt install -y python3 python3-venv python3-pip git curl ca-certificates
 # -------------------------
 # INSTALL / UPDATE
 # -------------------------
-echo "[2/8] Preparing install directory..."
+echo "[2/9] Preparing install directory..."
 
 if [ -d "$PROJECT_DIR/.git" ]; then
     echo "[INFO] Updating repository..."
@@ -40,7 +40,7 @@ fi
 # -------------------------
 # VENV
 # -------------------------
-echo "[3/8] Setting up virtual environment..."
+echo "[3/9] Setting up virtual environment..."
 
 if [ ! -d "$PROJECT_DIR/venv" ]; then
     python3 -m venv "$PROJECT_DIR/venv"
@@ -51,10 +51,13 @@ source "$PROJECT_DIR/venv/bin/activate"
 python -m pip install --upgrade pip setuptools wheel
 pip install -r requirements.txt
 
+# 👉 ДОБАВЛЯЕМ API зависимости
+pip install fastapi uvicorn
+
 # -------------------------
 # INPUT
 # -------------------------
-echo "[4/8] Configuration"
+echo "[4/9] Configuration"
 
 read -r -p "BOT_TOKEN: " BOT_TOKEN
 read -r -p "ADMIN_ID: " ADMIN_ID
@@ -72,7 +75,7 @@ DOMAIN=$(echo "$DOMAIN" | tr -d '\r')
 # -------------------------
 # ENV
 # -------------------------
-echo "[5/8] Writing .env..."
+echo "[5/9] Writing .env..."
 
 cat > "$PROJECT_DIR/.env" <<EOF
 BOT_TOKEN=$BOT_TOKEN
@@ -86,7 +89,7 @@ chmod 600 "$PROJECT_DIR/.env"
 # -------------------------
 # SYSTEMD BOT
 # -------------------------
-echo "[6/8] Installing bot service..."
+echo "[6/9] Installing bot service..."
 
 cat > /etc/systemd/system/trustpanel-bot.service <<EOF
 [Unit]
@@ -118,9 +121,37 @@ WantedBy=multi-user.target
 EOF
 
 # -------------------------
-# INSTALL OPTIONAL SYSTEMD UNITS
+# SYSTEMD API
 # -------------------------
-echo "[6.1] Installing systemd units..."
+echo "[7/9] Installing API service..."
+
+cat > /etc/systemd/system/trustpanel-api.service <<EOF
+[Unit]
+Description=TrustPanel API
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=$PROJECT_DIR
+EnvironmentFile=$PROJECT_DIR/.env
+ExecStart=$PROJECT_DIR/venv/bin/uvicorn api:app --host 127.0.0.1 --port 8000
+
+Restart=always
+RestartSec=3
+User=root
+Group=root
+
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+# -------------------------
+# OPTIONAL SYSTEMD UNITS
+# -------------------------
+echo "[7.1] Installing systemd units..."
 
 install_unit () {
     local name=$1
@@ -143,13 +174,18 @@ install_unit "trustpanel-backup.timer"
 # -------------------------
 # SYSTEMD APPLY
 # -------------------------
-echo "[7/8] Reloading systemd..."
+echo "[8/9] Reloading systemd..."
 
 systemctl daemon-reload
 
 systemctl stop trustpanel-bot.service 2>/dev/null || true
+systemctl stop trustpanel-api.service 2>/dev/null || true
+
 systemctl enable trustpanel-bot.service
+systemctl enable trustpanel-api.service
+
 systemctl restart trustpanel-bot.service
+systemctl restart trustpanel-api.service
 
 # старт таймеров (если есть)
 systemctl start trustpanel-cleanup.timer 2>/dev/null || true
@@ -158,17 +194,26 @@ systemctl start trustpanel-backup.timer 2>/dev/null || true
 # -------------------------
 # HEALTH CHECK
 # -------------------------
-echo "[8/8] Checking service..."
+echo "[9/9] Checking services..."
 
-sleep 2
+sleep 3
 
+echo ""
+echo "=== BOT STATUS ==="
 if systemctl is-active --quiet trustpanel-bot.service; then
-    echo "✅ TRUSTPANEL BOT IS RUNNING"
+    echo "✅ BOT RUNNING"
 else
-    echo "❌ SERVICE FAILED"
+    echo "❌ BOT FAILED"
     systemctl status trustpanel-bot.service --no-pager || true
-    echo ""
-    journalctl -u trustpanel-bot.service -n 50 --no-pager || true
+fi
+
+echo ""
+echo "=== API STATUS ==="
+if systemctl is-active --quiet trustpanel-api.service; then
+    echo "✅ API RUNNING"
+else
+    echo "❌ API FAILED"
+    systemctl status trustpanel-api.service --no-pager || true
 fi
 
 echo ""
@@ -177,4 +222,5 @@ systemctl list-timers | grep trustpanel || true
 
 echo ""
 echo "DONE"
-echo "Logs: journalctl -u trustpanel-bot.service -f"
+echo "Bot logs: journalctl -u trustpanel-bot.service -f"
+echo "API logs: journalctl -u trustpanel-api.service -f"
