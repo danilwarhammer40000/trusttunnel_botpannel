@@ -25,13 +25,16 @@ def load() -> List[Dict]:
 
 def save(data: List[Dict]):
     _ensure()
-    with tempfile.NamedTemporaryFile("w", delete=False, dir=os.path.dirname(DB_PATH)) as tmp:
+    tmp_dir = os.path.dirname(DB_PATH)
+
+    with tempfile.NamedTemporaryFile("w", delete=False, dir=tmp_dir) as tmp:
         json.dump(data, tmp, indent=2)
         tmp_path = tmp.name
+
     os.replace(tmp_path, DB_PATH)
 
 
-# ---------------- CRUD ----------------
+# ================= USERS =================
 
 def list_users():
     return load()
@@ -59,18 +62,22 @@ def get_user(username: str) -> Optional[Dict]:
 
 def update_user(username: str, **kwargs):
     data = load()
+
     for u in data:
         if u.get("username") == username:
             u.update(kwargs)
             break
+
     save(data)
 
 
-# ---------------- TELEGRAM SAFE LOOKUP ----------------
+# ================= TELEGRAM LOOKUP (FIXED) =================
 
 def get_user_by_telegram_id(tg_id: int):
+    tg_id = str(tg_id)
+
     for u in load():
-        if str(u.get("telegram_id")) == str(tg_id):
+        if str(u.get("telegram_id")) == tg_id:
             return u
     return None
 
