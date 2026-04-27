@@ -1,21 +1,45 @@
 import re
 import secrets
 import string
+import json
+import os
 from datetime import datetime, timedelta
-
-from core.db import (
-    add_user,
-    get_user,
-    update_user,
-    get_user_by_telegram_id,
-    list_users
-)
 
 from service import rebuild_credentials
 from generator import generate_tt_link
 
 
+USERS_DB = "/opt/trustpanel/data/users.json"
+
 USERNAME_RE = re.compile(r"^[a-z0-9]{4,16}$")
+
+
+# ================= STORAGE =================
+
+def load_users():
+    if not os.path.exists(USERS_DB):
+        return []
+    with open(USERS_DB, "r") as f:
+        return json.load(f)
+
+
+def save_users(users):
+    with open(USERS_DB, "w") as f:
+        json.dump(users, f, indent=2)
+
+
+def find_user(username: str):
+    for u in load_users():
+        if u.get("username") == username:
+            return u
+    return None
+
+
+def find_by_tg(tg_id: int):
+    for u in load_users():
+        if u.get("telegram_id") == tg_id:
+            return u
+    return None
 
 
 # ================= PASSWORD =================
@@ -33,9 +57,8 @@ def validate_username(username: str):
     if not USERNAME_RE.match(username):
         raise ValueError("INVALID_USERNAME")
 
-    for u in list_users():
-        if u.get("username") == username:
-            raise ValueError("USERNAME_TAKEN")
+    if find_user(username):
+        raise ValueError("USERNAME_TAKEN")
 
     return username
 
@@ -43,13 +66,10 @@ def validate_username(username: str):
 # ================= CREATE USER =================
 
 def create_user_safe(tg_id: int, username: str, plan: str):
-    existing = get_user_by_telegram_id(tg_id)
-
-    if existing:
+    if find_by_tg(tg_id):
         raise ValueError("USER_ALREADY_EXISTS")
 
     username = validate_username(username)
-
     password = generate_password()
 
     user = {
@@ -63,7 +83,11 @@ def create_user_safe(tg_id: int, username: str, plan: str):
         "trial_used": False
     }
 
-    add_user(user)
+    users = load_users()
+    users.append(user)
+    save_users(users)
+
+    rebuild_credentials()
 
     return user
 
@@ -71,7 +95,8 @@ def create_user_safe(tg_id: int, username: str, plan: str):
 # ================= ACTIVATE TRIAL =================
 
 def activate_trial(username: str):
-    user = get_user(username)
+    users = load_users()
+    user = find_user(username)
 
     if not user:
         raise ValueError("USER_NOT_FOUND")
@@ -81,57 +106,53 @@ def activate_trial(username: str):
 
     expires = datetime.utcnow() + timedelta(days=3)
 
-    update_user(
-        username,
-        expires_at=expires.strftime("%Y-%m-%d"),
-        status="active",
-        trial_used=True
-    )
+    user["expires_at"] = expires.strftime("%Y-%m-%d")
+    user["status"] = "active"
+    user["trial_used"] = True
+
+    save_users(users)
 
     rebuild_credentials()
-
-    tt_link = generate_tt_link(user["username"], user["password"])
 
     return {
         "username": user["username"],
         "password": user["password"],
-        "expires_at": expires.strftime("%Y-%m-%d"),
-        "tt_link": tt_link
+        "expires_at": user["expires_at"],
+        "tt_link": generate_tt_link(user["username"], user["password"])
     }
 
 
 # ================= ACTIVATE PAID =================
 
 def activate_paid(username: str, days: int):
-    user = get_user(username)
+    users = load_users()
+    user = find_user(username)
 
     if not user:
         raise ValueError("USER_NOT_FOUND")
 
     expires = datetime.utcnow() + timedelta(days=days)
 
-    update_user(
-        username,
-        expires_at=expires.strftime("%Y-%m-%d"),
-        status="active"
-    )
+    user["expires_at"] = expires.strftime("%Y-%m-%d")
+    user["status"] = "active"
+
+    save_users(users)
 
     rebuild_credentials()
-
-    tt_link = generate_tt_link(user["username"], user["password"])
 
     return {
         "username": user["username"],
         "password": user["password"],
-        "expires_at": expires.strftime("%Y-%m-%d"),
-        "tt_link": tt_link
+        "expires_at": user["expires_at"],
+        "tt_link": generate_tt_link(user["username"], user["password"])
     }
 
 
 # ================= EXTEND =================
 
 def extend_user_safe(username: str, days: int):
-    user = get_user(username)
+    users = load_users()
+    user = find_user(username)
 
     if not user:
         raise ValueError("USER_NOT_FOUND")
@@ -146,19 +167,16 @@ def extend_user_safe(username: str, days: int):
 
     new_exp = base + timedelta(days=days)
 
-    update_user(
-        username,
-        expires_at=new_exp.strftime("%Y-%m-%d"),
-        status="active"
-    )
+    user["expires_at"] = new_exp.strftime("%Y-%m-%d")
+    user["status"] = "active"
+
+    save_users(users)
 
     rebuild_credentials()
-
-    tt_link = generate_tt_link(user["username"], user["password"])
 
     return {
         "username": user["username"],
         "password": user["password"],
-        "expires_at": new_exp.strftime("%Y-%m-%d"),
-        "tt_link": tt_link
+        "expires_at": user["expires_at"],
+        "tt_link": generate_tt_link(user["username"], user["password"])
     }
