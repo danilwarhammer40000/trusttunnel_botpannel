@@ -131,22 +131,15 @@ Description=TrustPanel API
 After=network.target
 
 [Service]
-Type=simple
-WorkingDirectory=$PROJECT_DIR
-EnvironmentFile=$PROJECT_DIR/.env
-ExecStart=$PROJECT_DIR/venv/bin/uvicorn api:app --host 127.0.0.1 --port 8000
-
+User=root
+WorkingDirectory=/opt/trustpanel
+ExecStart=/opt/trustpanel/venv/bin/uvicorn api.main:app --host 127.0.0.1 --port 8000
 Restart=always
 RestartSec=3
-User=root
-Group=root
-
-StandardOutput=journal
-StandardError=journal
+Environment=PYTHONUNBUFFERED=1
 
 [Install]
 WantedBy=multi-user.target
-EOF
 
 # -------------------------
 # OPTIONAL SYSTEMD UNITS
