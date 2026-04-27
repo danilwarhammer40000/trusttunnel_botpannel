@@ -123,8 +123,6 @@ EOF
 # -------------------------
 # SYSTEMD API
 # -------------------------
-echo "[7/9] Installing API service..."
-
 cat > /etc/systemd/system/trustpanel-api.service <<EOF
 [Unit]
 Description=TrustPanel API
