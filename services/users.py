@@ -5,8 +5,8 @@ import json
 import os
 from datetime import datetime, timedelta
 
-from service import rebuild_credentials
-from generator import generate_tt_link
+from trustpanel.core.service import rebuild_credentials
+from trustpanel.generator import generate_tt_link
 
 
 USERS_DB = "/opt/trustpanel/data/users.json"
