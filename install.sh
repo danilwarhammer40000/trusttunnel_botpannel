@@ -131,7 +131,10 @@ After=network.target
 [Service]
 User=root
 WorkingDirectory=/opt/trustpanel
-ExecStart=/opt/trustpanel/venv/bin/uvicorn api.main:app --host 127.0.0.1 --port 8000
+ExecStart=/opt/trustpanel/venv/bin/uvicorn \
+api.main:app \
+--host 0.0.0.0 \
+--port 8000
 Restart=always
 RestartSec=3
 Environment=PYTHONUNBUFFERED=1
