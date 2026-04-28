@@ -5,7 +5,7 @@ import json
 import os
 from datetime import datetime, timedelta
 
-from trustpanel.core.service import rebuild_credentials
+from core.service import rebuild_credentials
 from trustpanel.generator import generate_tt_link
 
 
