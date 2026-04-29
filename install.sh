@@ -51,8 +51,6 @@ source "$PROJECT_DIR/venv/bin/activate"
 python -m pip install --upgrade pip setuptools wheel
 pip install -r requirements.txt
 
-# 👉 ДОБАВЛЯЕМ API зависимости
-pip install fastapi uvicorn
 
 # -------------------------
 # INPUT
@@ -121,28 +119,6 @@ WantedBy=multi-user.target
 EOF
 
 # -------------------------
-# SYSTEMD API
-# -------------------------
-cat > /etc/systemd/system/trustpanel-api.service <<EOF
-[Unit]
-Description=TrustPanel API
-After=network.target
-
-[Service]
-User=root
-WorkingDirectory=/opt/trustpanel
-ExecStart=/opt/trustpanel/venv/bin/uvicorn \
-api.main:app \
---host 0.0.0.0 \
---port 8000
-Restart=always
-RestartSec=3
-Environment=PYTHONUNBUFFERED=1
-
-[Install]
-WantedBy=multi-user.target
-EOF
-# -------------------------
 # OPTIONAL SYSTEMD UNITS
 # -------------------------
 echo "[7.1] Installing systemd units..."
@@ -173,13 +149,10 @@ echo "[8/9] Reloading systemd..."
 systemctl daemon-reload
 
 systemctl stop trustpanel-bot.service 2>/dev/null || true
-systemctl stop trustpanel-api.service 2>/dev/null || true
 
 systemctl enable trustpanel-bot.service
-systemctl enable trustpanel-api.service
 
 systemctl restart trustpanel-bot.service
-systemctl restart trustpanel-api.service
 
 # старт таймеров (если есть)
 systemctl start trustpanel-cleanup.timer 2>/dev/null || true
@@ -202,19 +175,9 @@ else
 fi
 
 echo ""
-echo "=== API STATUS ==="
-if systemctl is-active --quiet trustpanel-api.service; then
-    echo "✅ API RUNNING"
-else
-    echo "❌ API FAILED"
-    systemctl status trustpanel-api.service --no-pager || true
-fi
-
-echo ""
 echo "=== STATUS ==="
 systemctl list-timers | grep trustpanel || true
 
 echo ""
 echo "DONE"
 echo "Bot logs: journalctl -u trustpanel-bot.service -f"
-echo "API logs: journalctl -u trustpanel-api.service -f"
