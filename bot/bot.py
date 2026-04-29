@@ -66,6 +66,7 @@ main_menu = ReplyKeyboardMarkup(
         [KeyboardButton(text="📋 List users")],
         [KeyboardButton(text="❌ Delete user")],
         [KeyboardButton(text="🔗 Get link")]
+        [KeyboardButton(text="🔄 Sync users")]
     ],
     resize_keyboard=True
 )
@@ -111,6 +112,10 @@ async def add_username(msg: Message, state: FSMContext):
 async def add_password(msg: Message, state: FSMContext):
     await state.update_data(password=msg.text)
     await state.set_state(AddUser.days)
+
+from core.sync import full_sync
+import asyncio
+    
 
     kb = ReplyKeyboardMarkup(
         keyboard=[
@@ -329,6 +334,23 @@ async def link_callback(call: CallbackQuery):
     )
 
     await call.answer()
+
+
+@dp.message(F.text == "🔄 Sync users")
+async def sync_users(msg: Message):
+    if msg.from_user.id != ADMIN_ID:
+        await msg.answer("⛔ Access denied")
+        return
+
+    await msg.answer("🔄 Sync started...")
+
+    try:
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(None, full_sync)
+
+        await msg.answer("✅ Sync completed")
+    except Exception as e:
+        await msg.answer(f"❌ Sync failed: {str(e)}")
 
 
 # ---------------- MAIN ----------------
