@@ -3,7 +3,6 @@ import os
 from datetime import datetime, timedelta
 
 from dotenv import load_dotenv
-
 load_dotenv()
 
 from aiogram import Bot, Dispatcher, F
@@ -22,7 +21,6 @@ from aiogram.fsm.context import FSMContext
 from core.service import safe_sync
 from core.generator import generate_link
 from core.db import add_user, delete_user, list_users, get_user, update_user
-from core.credentials import remove_user_from_credentials
 
 
 # ---------------- ENV ----------------
@@ -65,7 +63,7 @@ main_menu = ReplyKeyboardMarkup(
         [KeyboardButton(text="➕ Add user")],
         [KeyboardButton(text="📋 List users")],
         [KeyboardButton(text="❌ Delete user")],
-        [KeyboardButton(text="🔗 Get link")]
+        [KeyboardButton(text="🔗 Get link")],
         [KeyboardButton(text="🔄 Sync users")]
     ],
     resize_keyboard=True
@@ -93,6 +91,24 @@ async def cancel(msg: Message, state: FSMContext):
     await msg.answer("Menu:", reply_markup=main_menu)
 
 
+# ---------------- SYNC BUTTON ----------------
+
+@dp.message(F.text == "🔄 Sync users")
+async def sync_users(msg: Message):
+    if msg.from_user.id != ADMIN_ID:
+        return
+
+    await msg.answer("🔄 Sync started...")
+
+    try:
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(None, safe_sync)
+
+        await msg.answer("✅ Sync completed")
+    except Exception as e:
+        await msg.answer(f"❌ Sync error: {str(e)}")
+
+
 # ---------------- ADD USER FLOW ----------------
 
 @dp.message(F.text == "➕ Add user")
@@ -103,19 +119,15 @@ async def menu_add(msg: Message, state: FSMContext):
 
 @dp.message(AddUser.username)
 async def add_username(msg: Message, state: FSMContext):
-    await state.update_data(username=msg.text)
+    await state.update_data(username=msg.text.strip())
     await state.set_state(AddUser.password)
     await msg.answer("Enter password:")
 
 
 @dp.message(AddUser.password)
 async def add_password(msg: Message, state: FSMContext):
-    await state.update_data(password=msg.text)
+    await state.update_data(password=msg.text.strip())
     await state.set_state(AddUser.days)
-
-from core.sync import full_sync
-import asyncio
-    
 
     kb = ReplyKeyboardMarkup(
         keyboard=[
@@ -142,10 +154,9 @@ async def add_days(msg: Message, state: FSMContext):
         await msg.answer("Use 3 / 30 / 0")
         return
 
-    if days == 0:
-        expires_at = None
-    else:
-        expires_at = (datetime.utcnow() + timedelta(days=days)).strftime("%Y-%m-%d")
+    expires_at = None if days == 0 else (
+        datetime.utcnow() + timedelta(days=days)
+    ).strftime("%Y-%m-%d")
 
     add_user({
         "username": username,
@@ -175,7 +186,7 @@ async def add_days(msg: Message, state: FSMContext):
 
 @dp.message(F.text == "📋 List users")
 async def menu_list(msg: Message):
-    users = list_users()
+    users = list_users() or []
 
     if not users:
         await msg.answer("No users")
@@ -183,10 +194,10 @@ async def menu_list(msg: Message):
 
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(
-            text=f"{u['username']} ({u.get('expires_at') or '∞'})",
-            callback_data=f"extend:{u['username']}"
+            text=f"{u.get('username','?')} ({u.get('expires_at') or '∞'})",
+            callback_data=f"extend:{u.get('username')}"
         )]
-        for u in users
+        for u in users if u.get("username")
     ])
 
     await msg.answer("Select user to extend:", reply_markup=kb)
@@ -212,7 +223,7 @@ async def extend_menu(call: CallbackQuery, state: FSMContext):
     await call.answer()
 
 
-# ---------------- EXTEND HANDLER ----------------
+# ---------------- EXTEND ----------------
 
 @dp.callback_query(F.data.startswith("ext:"))
 async def extend_handler(call: CallbackQuery, state: FSMContext):
@@ -230,13 +241,15 @@ async def extend_handler(call: CallbackQuery, state: FSMContext):
         update_user(username, expires_at=None, status="active")
 
     elif mode in ["3", "30"]:
-        days = int(mode)
-        expires_at = (datetime.utcnow() + timedelta(days=days)).strftime("%Y-%m-%d")
+        expires_at = (
+            datetime.utcnow() + timedelta(days=int(mode))
+        ).strftime("%Y-%m-%d")
+
         update_user(username, expires_at=expires_at, status="active")
 
     elif mode == "manual":
         await state.set_state(ExtendUser.manual)
-        await call.message.answer("Send date: YYYY-MM-DD")
+        await call.message.answer("Send date YYYY-MM-DD")
         await call.answer()
         return
 
@@ -250,12 +263,12 @@ async def extend_handler(call: CallbackQuery, state: FSMContext):
 @dp.message(ExtendUser.manual)
 async def manual_date(msg: Message, state: FSMContext):
     data = await state.get_data()
-    username = data["username"]
+    username = data.get("username")
 
     try:
         datetime.strptime(msg.text.strip(), "%Y-%m-%d")
     except:
-        await msg.answer("Wrong format. Use YYYY-MM-DD")
+        await msg.answer("Wrong format YYYY-MM-DD")
         return
 
     update_user(username, expires_at=msg.text.strip(), status="active")
@@ -263,25 +276,21 @@ async def manual_date(msg: Message, state: FSMContext):
     safe_sync()
 
     await state.clear()
-    await msg.answer(f"Updated to date: {username}")
+    await msg.answer(f"Updated: {username}")
 
 
 # ---------------- DELETE ----------------
 
 @dp.message(F.text == "❌ Delete user")
 async def menu_del(msg: Message):
-    users = list_users()
-
-    if not users:
-        await msg.answer("No users")
-        return
+    users = list_users() or []
 
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(
-            text=u["username"],
-            callback_data=f"del:{u['username']}"
+            text=u.get("username"),
+            callback_data=f"del:{u.get('username')}"
         )]
-        for u in users
+        for u in users if u.get("username")
     ])
 
     await msg.answer("Select user:", reply_markup=kb)
@@ -302,18 +311,14 @@ async def delete_callback(call: CallbackQuery):
 
 @dp.message(F.text == "🔗 Get link")
 async def menu_link(msg: Message):
-    users = list_users()
-
-    if not users:
-        await msg.answer("No users")
-        return
+    users = list_users() or []
 
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(
-            text=u["username"],
-            callback_data=f"link:{u['username']}"
+            text=u.get("username"),
+            callback_data=f"link:{u.get('username')}"
         )]
-        for u in users
+        for u in users if u.get("username")
     ])
 
     await msg.answer("Select user:", reply_markup=kb)
@@ -323,7 +328,7 @@ async def menu_link(msg: Message):
 async def link_callback(call: CallbackQuery):
     username = call.data.split(":")[1]
 
-    user = get_user(username)
+    user = get_user(username) or {}
     link = generate_link(username, DOMAIN)
 
     await call.message.answer(
@@ -334,23 +339,6 @@ async def link_callback(call: CallbackQuery):
     )
 
     await call.answer()
-
-
-@dp.message(F.text == "🔄 Sync users")
-async def sync_users(msg: Message):
-    if msg.from_user.id != ADMIN_ID:
-        await msg.answer("⛔ Access denied")
-        return
-
-    await msg.answer("🔄 Sync started...")
-
-    try:
-        loop = asyncio.get_event_loop()
-        await loop.run_in_executor(None, full_sync)
-
-        await msg.answer("✅ Sync completed")
-    except Exception as e:
-        await msg.answer(f"❌ Sync failed: {str(e)}")
 
 
 # ---------------- MAIN ----------------
